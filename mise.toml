@@ -1,0 +1,62 @@
+[tools]
+go = "1.27.1"
+
+[tasks.setup]
+description = "Download Go module dependencies"
+run = "go mod download"
+
+[tasks.run]
+description = "Run FyneTune from source"
+run = "go run ."
+
+[tasks.fmt]
+description = "Format Go source files"
+run = "go fmt ./..."
+
+[tasks.lint]
+description = "Run Go static checks"
+run = ["go vet ./...", "go tool staticcheck ./..."]
+
+[tasks.vuln]
+description = "Check Go dependencies and packages for known vulnerabilities"
+run = "go tool govulncheck ./..."
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
+
+[tasks.test-race]
+description = "Run unit tests with the race detector"
+run = "go test -race ./..."
+
+[tasks.build]
+description = "Build the FyneTune desktop application"
+run = "mkdir -p dist && go build -trimpath -o dist/fynetune ."
+
+[tasks.licenses]
+description = "Generate third-party license notices from the Go module"
+run = "go tool lian --dump -o THIRD_PARTY_LICENSES go.mod"
+
+[tasks.fyne-build]
+description = "Build FyneTune with Fyne application metadata embedded"
+run = "mkdir -p dist && go tool fyne build --source-dir . --output dist/fynetune"
+
+[tasks.package]
+description = "Package a development build for the current operating system"
+run = "mkdir -p dist && cd dist && go tool fyne package --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+
+[tasks.package-macos]
+description = "Create a macOS development application bundle"
+run = "mkdir -p dist && cd dist && go tool fyne package --os darwin --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+
+[tasks.package-linux]
+description = "Create a Linux development package"
+run = "mkdir -p dist && cd dist && go tool fyne package --os linux --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+
+[tasks.package-windows]
+description = "Create a Windows development package"
+run = "mkdir -p dist && cd dist && go tool fyne package --os windows --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+
+[tasks.check]
+description = "Run formatting, analysis, tests, vulnerability check, and build"
+depends = ["fmt", "lint", "vuln", "test", "build"]

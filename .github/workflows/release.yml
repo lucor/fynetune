@@ -1,0 +1,188 @@
+name: Build packages and release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package-linux:
+    name: Package Linux / amd64 (Debian Bookworm)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '1'
+      GOARCH: amd64
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set package version from tag
+        run: echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up the minimum supported Go release
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: oldstable
+          check-latest: true
+
+      - name: Install Linux graphics and audio dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config \
+            libgl1-mesa-dev libegl1-mesa-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libxi-dev libxxf86vm-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev \
+            libasound2-dev libpulse-dev
+
+      - name: Download pinned dependencies
+        run: go mod download
+
+      - name: Build Linux package with Fyne Tool
+        run: |
+          mkdir -p dist
+          cd dist
+          go tool fyne package --source-dir .. --name FyneTune \
+            --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png \
+            --app-version "$PACKAGE_VERSION" --release
+
+      - name: Name Linux package
+        run: mv dist/FyneTune.tar.xz "dist/FyneTune_${PACKAGE_VERSION}_linux_${GOARCH}.tar.xz"
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FyneTune-linux-amd64
+          path: dist/FyneTune_*.tar.xz
+          if-no-files-found: error
+
+  package-native:
+    name: Package ${{ matrix.os }} / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            os: windows
+            arch: amd64
+          - runner: macos-15-intel
+            os: darwin
+            arch: amd64
+          - runner: macos-15
+            os: darwin
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '1'
+      GOARCH: ${{ matrix.arch }}
+      TARGET_OS: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set package version from tag
+        run: echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up the minimum supported Go release
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: oldstable
+          check-latest: true
+
+      - name: Install Windows compiler
+        id: msys2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Configure Windows compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          $compilerBin = Join-Path $env:MSYS_LOCATION 'ucrt64/bin'
+          $compilerBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CC=$(Join-Path $compilerBin 'gcc.exe')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download pinned dependencies
+        run: go mod download
+
+      - name: Build native package with Fyne Tool
+        run: |
+          mkdir -p dist
+          cd dist
+          args=(package --source-dir .. --name FyneTune \
+            --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png \
+            --app-version "$PACKAGE_VERSION" --release)
+          go tool fyne "${args[@]}"
+
+      - name: Create macOS disk image
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - dist/FyneTune.app
+          codesign --verify --deep --strict dist/FyneTune.app
+          mkdir -p dist/dmg
+          cp -R dist/FyneTune.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname FyneTune -srcfolder dist/dmg -ov -format UDZO \
+            "dist/FyneTune_${PACKAGE_VERSION}_darwin_${GOARCH}.dmg"
+
+      - name: Name Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Fyne Tool builds the executable in the source directory, even when
+          # the package command was launched from dist.
+          Move-Item FyneTune.exe "dist/FyneTune_${env:PACKAGE_VERSION}_windows_${env:GOARCH}.exe"
+
+      - name: Upload native package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FyneTune-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/FyneTune_*.dmg
+            dist/FyneTune_*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [package-linux, package-native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create checksums and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum FyneTune_* > SHA256SUMS
+          gh release create "$RELEASE_TAG" FyneTune_* SHA256SUMS \
+            --verify-tag --title "FyneTune $RELEASE_TAG" \
+            --generate-notes
