@@ -9,9 +9,15 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-const brandColorName fyne.ThemeColorName = "fyneTuneNavy"
+const (
+	brandColorName       fyne.ThemeColorName = "fyneTuneNavy"
+	brandAccentColorName fyne.ThemeColorName = "fyneTuneAccent"
+)
 
-var brandNavy = color.NRGBA{R: 97, G: 127, B: 202, A: 255}
+var (
+	brandNavy   = color.NRGBA{R: 14, G: 45, B: 91, A: 255}
+	brandAccent = color.NRGBA{R: 11, G: 143, B: 243, A: 255}
+)
 
 type brandTheme struct {
 	fyne.Theme
@@ -20,6 +26,9 @@ type brandTheme struct {
 func (t brandTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	if name == brandColorName || name == theme.ColorNamePrimary {
 		return brandNavy
+	}
+	if name == brandAccentColorName {
+		return brandAccent
 	}
 	return t.Theme.Color(name, variant)
 }
