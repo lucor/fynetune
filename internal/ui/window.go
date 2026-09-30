@@ -355,16 +355,20 @@ func (w *Window) updateVolumeControls() {
 	muted := w.volumeMuted || w.settings.Volume == 0
 	if w.volumeMuteButton != nil {
 		if muted {
-			w.volumeMuteButton.SetIcon(theme.VolumeUpIcon())
-		} else {
 			w.volumeMuteButton.SetIcon(theme.VolumeMuteIcon())
+		} else {
+			w.volumeMuteButton.SetIcon(theme.VolumeUpIcon())
 		}
 	}
 	if w.volumeSlider != nil {
 		w.volumeSlider.SetValue(w.settings.Volume)
 	}
 	if w.volumeLabel != nil {
-		w.volumeLabel.SetText(fmt.Sprintf("Volume · %d%%", int(w.settings.Volume*100+0.5)))
+		volume := w.settings.Volume
+		if muted {
+			volume = 0
+		}
+		w.volumeLabel.SetText(fmt.Sprintf("%d%%", int(volume*100+0.5)))
 	}
 }
 
@@ -386,24 +390,38 @@ func (w *Window) build() {
 	fallbackArt.Resize(fyne.NewSquareSize(stationArtworkSize))
 	w.playerArtwork = stationArtworkFrame(fallbackArt)
 	w.play = iconButton(theme.MediaPlayIcon(), w.togglePlay)
+	w.play.Importance = widget.HighImportance
+	playControl := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(playerControlSize),
+		container.NewThemeOverride(w.play, playerControlTheme{Theme: w.app.Settings().Theme()})))
 	w.volumeSlider = widget.NewSlider(0, 1)
 	w.volumeSlider.Step = 0.01
 	w.volumeSlider.Value = w.settings.Volume
 	w.volumeSlider.OnChanged = w.setVolume
 	w.volumeLabel = widget.NewLabel("")
+	w.volumeLabel.Alignment = fyne.TextAlignTrailing
 	w.volumeMuteButton = iconButton(theme.VolumeMuteIcon(), w.toggleMute)
+	volumeControl := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(playerControlSize),
+		container.NewThemeOverride(w.volumeMuteButton, playerControlTheme{Theme: w.app.Settings().Theme()})))
+	volumeValue := container.NewCenter(container.NewGridWrap(fyne.NewSize(playerVolumeValueWidth, playerControlSize), w.volumeLabel))
 	w.expandedPlayer = container.NewBorder(
 		nil, nil,
-		w.volumeMuteButton,
-		w.volumeLabel,
+		volumeControl,
+		volumeValue,
 		w.volumeSlider,
 	)
 	w.expandedPlayer.Hide()
-	barContent := container.NewBorder(nil, nil, w.playerArtwork, nil, container.NewVBox(w.title, w.artist))
+	stationTitle := container.NewThemeOverride(w.title, stationRowTextTheme{Theme: w.app.Settings().Theme()})
+	track := container.NewThemeOverride(w.artist, playerTrackTheme{Theme: w.app.Settings().Theme()})
+	playerText := container.New(layout.NewCustomPaddedVBoxLayout(playerTextGap), stationTitle, track)
+	centeredText := container.NewVBox(layout.NewSpacer(), playerText, layout.NewSpacer())
+	artworkGap := canvas.NewRectangle(color.Transparent)
+	artworkGap.SetMinSize(fyne.NewSize(stationArtworkTextGap, 0))
+	artwork := container.New(layout.NewCustomPaddedHBoxLayout(0), container.NewCenter(w.playerArtwork), artworkGap)
+	barContent := container.NewBorder(nil, nil, artwork, nil, centeredText)
 	barTap := newStationTapArea(barContent, w.toggleExpandedPlayer, nil)
 	playerBar := container.NewVBox(
 		widget.NewSeparator(),
-		container.NewBorder(nil, nil, nil, w.play, barTap),
+		container.NewBorder(nil, nil, nil, playControl, barTap),
 		w.expandedPlayer,
 	)
 	w.playerBar = playerBar
@@ -1763,7 +1781,7 @@ func (w *Window) playStation(station radio.Station) {
 	_ = w.store.SaveSettings(w.settings)
 	w.updatePlayerBar()
 	w.artist.SetText("Connecting…")
-	w.setPlayControls("", theme.MediaStopIcon())
+	w.setPlayControls(theme.MediaStopIcon())
 	if w.page == pageFavorites || w.page == pageRecent {
 		w.refreshPage()
 	}
@@ -1821,8 +1839,7 @@ func (w *Window) toggleExpandedPlayer() {
 	w.win.Content().Refresh()
 }
 
-func (w *Window) setPlayControls(text string, icon fyne.Resource) {
-	w.play.SetText(text)
+func (w *Window) setPlayControls(icon fyne.Resource) {
 	w.play.SetIcon(icon)
 }
 
@@ -1876,17 +1893,17 @@ func (w *Window) events() {
 				switch ev.State {
 				case radio.StateStopped:
 					w.artist.SetText("Not playing")
-					w.setPlayControls("", theme.MediaPlayIcon())
+					w.setPlayControls(theme.MediaPlayIcon())
 					w.updatePlayerBar()
 				case radio.StateConnecting:
 					w.title.SetText(ev.Station.Name)
 					w.artist.SetText("Connecting…")
-					w.setPlayControls("", theme.MediaStopIcon())
+					w.setPlayControls(theme.MediaStopIcon())
 				case radio.StateBuffering:
 					w.artist.SetText("Buffering…")
 				case radio.StatePlaying:
 					w.title.SetText(ev.Station.Name)
-					w.setPlayControls("", theme.MediaStopIcon())
+					w.setPlayControls(theme.MediaStopIcon())
 					if ev.Metadata.RawTitle != "" {
 						w.artist.SetText(ev.Metadata.String())
 					} else {
@@ -1898,13 +1915,13 @@ func (w *Window) events() {
 					} else {
 						w.artist.SetText(fmt.Sprintf("Reconnecting · attempt %d", ev.Attempt))
 					}
-					w.setPlayControls("", theme.MediaStopIcon())
+					w.setPlayControls(theme.MediaStopIcon())
 				case radio.StateError:
 					message := "Playback failed"
 					if ev.Err != nil {
 						message = ev.Err.Error()
 					}
-					w.setPlayControls("Retry", theme.MediaPlayIcon())
+					w.setPlayControls(theme.MediaPlayIcon())
 					w.title.SetText(ev.Station.Name)
 					w.artist.SetText(message)
 				}
