@@ -206,6 +206,8 @@ const (
 	maxStationIconDimension = 4096
 	maxStationIconPixels    = 16 * 1024 * 1024
 	maxStationIconCacheSize = 4 << 20
+	stationArtworkSize      = 52
+	stationArtworkImageSize = 42
 	radioBrowserCacheTTL    = 24 * time.Hour
 	stationIconCacheTTL     = 30 * 24 * time.Hour
 )
@@ -368,9 +370,9 @@ func (w *Window) build() {
 	w.artist.Truncation = fyne.TextTruncateEllipsis
 	fallbackArt := canvas.NewImageFromResource(appIconResource)
 	fallbackArt.FillMode = canvas.ImageFillContain
-	fallbackArt.SetMinSize(fyne.NewSquareSize(44))
-	fallbackArt.Resize(fyne.NewSquareSize(44))
-	w.playerArtwork = container.NewGridWrap(fyne.NewSquareSize(48), fallbackArt)
+	fallbackArt.SetMinSize(fyne.NewSquareSize(stationArtworkImageSize))
+	fallbackArt.Resize(fyne.NewSquareSize(stationArtworkImageSize))
+	w.playerArtwork = stationArtworkFrame(fallbackArt)
 	w.play = iconButton(theme.MediaPlayIcon(), w.togglePlay)
 	w.volumeSlider = widget.NewSlider(0, 1)
 	w.volumeSlider.Step = 0.01
@@ -925,7 +927,7 @@ func (w *Window) stationRow(station radio.Station, detail string, trailing fyne.
 	name.Wrapping = fyne.TextWrapWord
 	meta := widget.NewLabel(detail)
 	meta.Truncation = fyne.TextTruncateEllipsis
-	icon := container.NewGridWrap(fyne.NewSquareSize(52), w.stationImage(station))
+	icon := stationArtworkFrame(w.stationImage(station))
 	content := container.NewBorder(nil, nil, icon, nil, container.NewVBox(name, meta))
 	if onTapped != nil {
 		area := newStationTapArea(content, onTapped, onLongTapped)
@@ -994,7 +996,7 @@ func (w *Window) emptyState(icon fyne.Resource, title, message string) fyne.Canv
 func (w *Window) stationImage(station radio.Station) *canvas.Image {
 	img := canvas.NewImageFromResource(appIconResource)
 	img.FillMode = canvas.ImageFillContain
-	iconSize := fyne.NewSize(42, 42)
+	iconSize := fyne.NewSquareSize(stationArtworkImageSize)
 	img.SetMinSize(iconSize)
 	img.Resize(iconSize)
 	if station.ID != "" {
@@ -1027,6 +1029,10 @@ func (w *Window) stationImage(station radio.Station) *canvas.Image {
 	w.faviconLoading[key] = []*canvas.Image{img}
 	go w.fetchStationImage(station.ID, station.Name, key, faviconURL, homepageURL)
 	return img
+}
+
+func stationArtworkFrame(image fyne.CanvasObject) *fyne.Container {
+	return container.NewGridWrap(fyne.NewSquareSize(stationArtworkSize), container.NewPadded(image))
 }
 
 func stationIconKey(stationID, faviconURL, homepageURL string) string {
@@ -1744,13 +1750,13 @@ func (w *Window) updatePlayerBar() {
 		if w.selected.ID == "" {
 			art = canvas.NewImageFromResource(appIconResource)
 			art.FillMode = canvas.ImageFillContain
-			art.SetMinSize(fyne.NewSquareSize(44))
-			art.Resize(fyne.NewSquareSize(44))
+			art.SetMinSize(fyne.NewSquareSize(stationArtworkImageSize))
+			art.Resize(fyne.NewSquareSize(stationArtworkImageSize))
 		} else {
 			art = w.stationImage(w.selected)
 		}
 		w.playerArt = art
-		w.playerArtwork.Objects = []fyne.CanvasObject{art}
+		w.playerArtwork.Objects = []fyne.CanvasObject{container.NewPadded(art)}
 		w.playerArtwork.Refresh()
 		w.playerArtID = w.selected.ID
 	}
