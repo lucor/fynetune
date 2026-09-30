@@ -6,6 +6,10 @@
 
 FyneTune is a lightweight desktop internet radio player for Windows, macOS, and Linux. Discover stations, save favorites, and listen while the app runs in the background.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="FyneTune playing an internet radio station" width="360">
+</p>
+
 ## Features
 
 - Browse and search stations from [Radio Browser](https://www.radio-browser.info/).
