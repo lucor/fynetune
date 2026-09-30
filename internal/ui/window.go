@@ -102,6 +102,7 @@ type Window struct {
 	countryOptions                                       []string
 	searchCountryValue, searchTagValue, searchCodecValue string
 	directoryStations                                    []radio.Station
+	visibleStationRows                                   []*stationTapArea
 	query                                                string
 	page                                                 page
 	recent                                               []recentStation
@@ -447,6 +448,7 @@ func (w *Window) updateNavigation() {
 }
 
 func (w *Window) refreshPage() {
+	w.visibleStationRows = nil
 	var content *fyne.Container
 	if w.regionSetupNeeded {
 		content = w.regionWelcomePage()
@@ -926,7 +928,11 @@ func (w *Window) stationRow(station radio.Station, detail string, trailing fyne.
 	icon := container.NewGridWrap(fyne.NewSquareSize(52), w.stationImage(station))
 	content := container.NewBorder(nil, nil, icon, nil, container.NewVBox(name, meta))
 	if onTapped != nil {
-		row := container.NewBorder(nil, nil, nil, trailing, newStationTapArea(content, onTapped, onLongTapped))
+		area := newStationTapArea(content, onTapped, onLongTapped)
+		area.stationID = station.ID
+		area.SetHighlighted(w.stationIsActive(station.ID))
+		w.visibleStationRows = append(w.visibleStationRows, area)
+		row := container.NewBorder(nil, nil, nil, trailing, area)
 		return container.NewPadded(row)
 	}
 	return container.NewPadded(container.NewBorder(nil, nil, icon, trailing, container.NewVBox(name, meta)))
@@ -961,6 +967,18 @@ func (w *Window) stationDetails(station radio.Station) string {
 		return "Selected · " + detail
 	}
 	return detail
+}
+
+func (w *Window) stationIsActive(id string) bool {
+	if id == "" || id != w.selected.ID {
+		return false
+	}
+	switch w.player.State() {
+	case radio.StateConnecting, radio.StateBuffering, radio.StatePlaying, radio.StateReconnecting:
+		return true
+	default:
+		return false
+	}
 }
 
 func (w *Window) emptyState(icon fyne.Resource, title, message string) fyne.CanvasObject {
@@ -1282,8 +1300,16 @@ func (w *Window) refreshDiscoveryRows() {
 	if w.remoteResults == nil || (w.page != pageDiscover && w.page != pageSearch) {
 		return
 	}
+	w.visibleStationRows = nil
 	w.remoteResults.Objects = w.discoveryRows(w.directoryStations).Objects
 	w.remoteResults.Refresh()
+	w.refreshPlayingRows()
+}
+
+func (w *Window) refreshPlayingRows() {
+	for _, row := range w.visibleStationRows {
+		row.SetHighlighted(w.stationIsActive(row.stationID))
+	}
 }
 
 func (w *Window) isFavorite(id string) bool {
@@ -1838,6 +1864,7 @@ func (w *Window) events() {
 					w.title.SetText(ev.Station.Name)
 					w.artist.SetText(message)
 				}
+				w.refreshPlayingRows()
 				if ev.State != radio.StatePlaying || ev.Metadata.RawTitle == "" {
 					w.refreshDiscoveryRows()
 				}

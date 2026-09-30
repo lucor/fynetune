@@ -17,6 +17,9 @@ type stationTapArea struct {
 	widget.BaseWidget
 	content      fyne.CanvasObject
 	background   *canvas.Rectangle
+	stationID    string
+	highlighted  bool
+	hovered      bool
 	onTapped     func()
 	onLongTapped func()
 }
@@ -29,7 +32,31 @@ func newStationTapArea(content fyne.CanvasObject, onTapped, onLongTapped func())
 
 func (a *stationTapArea) CreateRenderer() fyne.WidgetRenderer {
 	a.background = canvas.NewRectangle(color.Transparent)
+	a.refreshBackground()
 	return widget.NewSimpleRenderer(container.NewStack(a.background, a.content))
+}
+
+func (a *stationTapArea) SetHighlighted(highlighted bool) {
+	if a.highlighted == highlighted {
+		return
+	}
+	a.highlighted = highlighted
+	a.refreshBackground()
+}
+
+func (a *stationTapArea) refreshBackground() {
+	if a.background == nil {
+		return
+	}
+	switch {
+	case a.hovered:
+		a.background.FillColor = theme.Color(theme.ColorNameHover)
+	case a.highlighted:
+		a.background.FillColor = color.NRGBA{R: brandAccent.R, G: brandAccent.G, B: brandAccent.B, A: 32}
+	default:
+		a.background.FillColor = color.Transparent
+	}
+	a.background.Refresh()
 }
 
 func (a *stationTapArea) Tapped(*fyne.PointEvent) {
@@ -45,21 +72,15 @@ func (a *stationTapArea) LongTapped(*fyne.PointEvent) {
 }
 
 func (a *stationTapArea) MouseIn(*desktop.MouseEvent) {
-	if a.background == nil {
-		return
-	}
-	a.background.FillColor = theme.Color(theme.ColorNameHover)
-	a.background.Refresh()
+	a.hovered = true
+	a.refreshBackground()
 }
 
 func (a *stationTapArea) MouseMoved(*desktop.MouseEvent) {}
 
 func (a *stationTapArea) MouseOut() {
-	if a.background == nil {
-		return
-	}
-	a.background.FillColor = color.Transparent
-	a.background.Refresh()
+	a.hovered = false
+	a.refreshBackground()
 }
 
 func (a *stationTapArea) Cursor() desktop.Cursor {
