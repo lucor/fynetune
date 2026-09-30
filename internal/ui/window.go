@@ -298,12 +298,14 @@ func iconButton(icon fyne.Resource, tapped func()) *widget.Button {
 	return button
 }
 
-func (w *Window) favoriteButton(station radio.Station) *widget.Button {
-	icon := favoriteOutlineResource
+func (w *Window) favoriteButton(station radio.Station) fyne.CanvasObject {
+	icon := favoriteRowOutline
 	if w.isFavorite(station.ID) {
-		icon = favoriteFilledResource
+		icon = favoriteRowFilled
 	}
-	return iconButton(icon, func() { w.toggleFavorite(station) })
+	button := iconButton(icon, func() { w.toggleFavorite(station) })
+	return container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(favoriteTouchSize),
+		container.NewThemeOverride(button, favoriteButtonTheme{Theme: w.app.Settings().Theme()})))
 }
 
 func (w *Window) setVolume(volume float64) {
