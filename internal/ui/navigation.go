@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -15,6 +16,8 @@ const (
 	stationMetadataColorName     fyne.ThemeColorName = "stationMetadata"
 	stationMetadataSizeName      fyne.ThemeSizeName  = "stationMetadata"
 	stationMetadataSizeReduction                     = 1
+	navigationIndicatorWidth                         = 28
+	navigationIndicatorHeight                        = 2
 )
 
 var (
@@ -30,6 +33,17 @@ type brandTheme struct {
 
 type stationRowTextTheme struct {
 	fyne.Theme
+}
+
+type navItemTheme struct {
+	fyne.Theme
+}
+
+func (t navItemTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	if name == theme.ColorNamePrimary {
+		return brandAccent
+	}
+	return t.Theme.Color(name, variant)
 }
 
 func (t stationRowTextTheme) Size(name fyne.ThemeSizeName) float32 {
@@ -71,6 +85,7 @@ type navItem struct {
 	onTapped         func()
 	icon             *widget.Icon
 	label            *widget.Label
+	indicator        *canvas.Rectangle
 }
 
 func newNavItem(text string, icon, selectedIcon fyne.Resource, onTapped func()) *navItem {
@@ -83,7 +98,10 @@ func (n *navItem) CreateRenderer() fyne.WidgetRenderer {
 	n.icon = widget.NewIcon(n.resource)
 	n.label = widget.NewLabel(n.text)
 	n.label.Alignment = fyne.TextAlignCenter
-	content := container.NewVBox(container.NewCenter(n.icon), container.NewCenter(n.label))
+	n.indicator = canvas.NewRectangle(color.Transparent)
+	n.indicator.SetMinSize(fyne.NewSize(navigationIndicatorWidth, navigationIndicatorHeight))
+	label := container.NewThemeOverride(container.NewCenter(n.label), navItemTheme{Theme: n.Theme()})
+	content := container.NewVBox(container.NewCenter(n.indicator), container.NewVBox(container.NewCenter(n.icon), label))
 	n.applyStyle()
 	return widget.NewSimpleRenderer(content)
 }
@@ -112,7 +130,7 @@ func (n *navItem) applyStyle() {
 		icon = n.selectedResource
 	}
 	if n.selected && isSVG(icon.Content()) {
-		icon = theme.NewColoredResource(icon, brandColorName)
+		icon = theme.NewColoredResource(icon, brandAccentColorName)
 	}
 	if n.selected {
 		n.label.Importance = widget.HighImportance
@@ -121,6 +139,14 @@ func (n *navItem) applyStyle() {
 	}
 	n.icon.SetResource(icon)
 	n.label.TextStyle.Bold = n.selected
+	if n.indicator != nil {
+		if n.selected {
+			n.indicator.FillColor = brandAccent
+		} else {
+			n.indicator.FillColor = color.Transparent
+		}
+		n.indicator.Refresh()
+	}
 	n.icon.Refresh()
 	n.label.Refresh()
 }

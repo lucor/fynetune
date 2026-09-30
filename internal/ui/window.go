@@ -217,6 +217,8 @@ const (
 	stationArtworkSize         = 52
 	stationArtworkCornerRadius = 8
 	stationArtworkTextGap      = 8
+	headerLogoWidth            = 170
+	headerLogoHeight           = 47
 	radioBrowserCacheTTL       = 24 * time.Hour
 	stationIconCacheTTL        = 30 * 24 * time.Hour
 )
@@ -373,10 +375,11 @@ func (w *Window) updateVolumeControls() {
 }
 
 func (w *Window) build() {
-	logo := canvas.NewImageFromResource(wordmarkResource)
+	logo := canvas.NewImageFromResource(logoResource)
 	logo.FillMode = canvas.ImageFillContain
+	brand := container.NewCenter(container.NewGridWrap(fyne.NewSize(headerLogoWidth, headerLogoHeight), logo))
 	settings := iconButton(theme.SettingsIcon(), func() { w.settingsDialog() })
-	header := container.NewBorder(nil, nil, container.NewGridWrap(fyne.NewSize(112, 34), logo), settings, nil)
+	header := container.NewBorder(nil, nil, brand, settings, nil)
 
 	w.body = container.NewStack()
 	w.title = widget.NewLabelWithStyle("Choose a station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -426,7 +429,7 @@ func (w *Window) build() {
 	)
 	w.playerBar = playerBar
 	w.navDiscover = newNavItem("Discover", theme.HomeIcon(), nil, func() { w.showPage(pageDiscover) })
-	w.navFavorites = newNavItem("Favorites", favoriteOutlineResource, favoriteFilledResource, func() { w.showPage(pageFavorites) })
+	w.navFavorites = newNavItem("Favorites", favoriteOutlineResource, favoriteRowFilled, func() { w.showPage(pageFavorites) })
 	w.navRecent = newNavItem("Recent", theme.HistoryIcon(), nil, func() { w.showPage(pageRecent) })
 	nav := container.NewGridWithColumns(3, w.navDiscover, w.navFavorites, w.navRecent)
 	w.navigation = nav
