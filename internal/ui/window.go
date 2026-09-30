@@ -9,6 +9,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -28,6 +29,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	appcache "go.lucor.dev/fynetune/internal/cache"
@@ -130,6 +132,12 @@ type Window struct {
 
 type recentStation = storage.RecentStation
 
+type stationRowDetails struct {
+	genre    string
+	metadata string
+	codec    string
+}
+
 func restoreSelectedStation(id string, stations []radio.Station, recent []recentStation) radio.Station {
 	if id == "" {
 		return radio.Station{}
@@ -203,13 +211,14 @@ func (e *searchableEntry) TypedKey(key *fyne.KeyEvent) {
 }
 
 const (
-	maxStationIconDimension = 4096
-	maxStationIconPixels    = 16 * 1024 * 1024
-	maxStationIconCacheSize = 4 << 20
-	stationArtworkSize      = 52
-	stationArtworkImageSize = 42
-	radioBrowserCacheTTL    = 24 * time.Hour
-	stationIconCacheTTL     = 30 * 24 * time.Hour
+	maxStationIconDimension    = 4096
+	maxStationIconPixels       = 16 * 1024 * 1024
+	maxStationIconCacheSize    = 4 << 20
+	stationArtworkSize         = 52
+	stationArtworkCornerRadius = 8
+	stationArtworkTextGap      = 8
+	radioBrowserCacheTTL       = 24 * time.Hour
+	stationIconCacheTTL        = 30 * 24 * time.Hour
 )
 
 func New(a fyne.App, player radio.Player, directories ...radiobrowser.Directory) *Window {
@@ -370,8 +379,9 @@ func (w *Window) build() {
 	w.artist.Truncation = fyne.TextTruncateEllipsis
 	fallbackArt := canvas.NewImageFromResource(appIconResource)
 	fallbackArt.FillMode = canvas.ImageFillContain
-	fallbackArt.SetMinSize(fyne.NewSquareSize(stationArtworkImageSize))
-	fallbackArt.Resize(fyne.NewSquareSize(stationArtworkImageSize))
+	fallbackArt.CornerRadius = stationArtworkCornerRadius
+	fallbackArt.SetMinSize(fyne.NewSquareSize(stationArtworkSize))
+	fallbackArt.Resize(fyne.NewSquareSize(stationArtworkSize))
 	w.playerArtwork = stationArtworkFrame(fallbackArt)
 	w.play = iconButton(theme.MediaPlayIcon(), w.togglePlay)
 	w.volumeSlider = widget.NewSlider(0, 1)
@@ -882,7 +892,7 @@ func (w *Window) stationRows(stations []radio.Station) *fyne.Container {
 	for _, station := range stations {
 		s := station
 		favorite := w.favoriteButton(s)
-		row := w.stationRow(s, w.stationDetails(s), favorite, func() { w.playStation(s) }, func() { w.stationMenu(s) })
+		row := w.stationRow(s, stationMeta(s, ""), favorite, func() { w.playStation(s) }, func() { w.stationMenu(s) })
 		rows.Add(row)
 	}
 	return rows
@@ -903,7 +913,7 @@ func (w *Window) recentPage() *fyne.Container {
 		}
 		station := recent.Station
 		favorite := w.favoriteButton(station)
-		rows.Add(w.stationRow(station, "Played "+recent.PlayedAt.Format("15:04"), favorite, func() { w.playStation(station) }, func() { w.stationMenu(station) }))
+		rows.Add(w.stationRow(station, stationRowDetails{metadata: "Played " + recent.PlayedAt.Format("15:04")}, favorite, func() { w.playStation(station) }, func() { w.stationMenu(station) }))
 	}
 	return rows
 }
@@ -922,13 +932,17 @@ func recentDayLabel(playedAt time.Time) string {
 	}
 }
 
-func (w *Window) stationRow(station radio.Station, detail string, trailing fyne.CanvasObject, onTapped, onLongTapped func()) fyne.CanvasObject {
-	name := widget.NewLabelWithStyle(station.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	name.Wrapping = fyne.TextWrapWord
-	meta := widget.NewLabel(detail)
-	meta.Truncation = fyne.TextTruncateEllipsis
-	icon := stationArtworkFrame(w.stationImage(station))
-	content := container.NewBorder(nil, nil, icon, nil, container.NewVBox(name, meta))
+func (w *Window) stationRow(station radio.Station, detail stationRowDetails, trailing fyne.CanvasObject, onTapped, onLongTapped func()) fyne.CanvasObject {
+	textView := stationRowDetailView(detail)
+	textView.Segments = append([]widget.RichTextSegment{
+		&widget.TextSegment{Text: station.Name + "\n", Style: widget.RichTextStyleStrong},
+	}, textView.Segments...)
+	text := container.NewThemeOverride(textView, stationRowTextTheme{Theme: w.app.Settings().Theme()})
+	artwork := container.NewCenter(stationArtworkFrame(w.stationImage(station)))
+	gap := canvas.NewRectangle(color.Transparent)
+	gap.SetMinSize(fyne.NewSize(stationArtworkTextGap, 0))
+	icon := container.New(layout.NewCustomPaddedHBoxLayout(0), artwork, gap)
+	content := container.NewBorder(nil, nil, icon, nil, text)
 	if onTapped != nil {
 		area := newStationTapArea(content, onTapped, onLongTapped)
 		area.stationID = station.ID
@@ -937,38 +951,58 @@ func (w *Window) stationRow(station radio.Station, detail string, trailing fyne.
 		row := container.NewBorder(nil, nil, nil, trailing, area)
 		return container.NewPadded(row)
 	}
-	return container.NewPadded(container.NewBorder(nil, nil, icon, trailing, container.NewVBox(name, meta)))
+	return container.NewPadded(container.NewBorder(nil, nil, icon, trailing, text))
 }
 
-func stationMeta(station radio.Station) string {
-	parts := make([]string, 0, 4)
+func stationMeta(station radio.Station, extra string) stationRowDetails {
+	details := stationRowDetails{}
 	if len(station.Tags) > 0 {
-		parts = append(parts, station.Tags[0])
+		details.genre = station.Tags[0]
 	}
+	parts := make([]string, 0, 4)
 	if station.Country != "" {
 		parts = append(parts, station.Country)
 	}
-	if station.Codec != "" {
-		parts = append(parts, strings.ToUpper(station.Codec))
+	technical := make([]string, 0, 2)
+	codec := strings.TrimSpace(station.Codec)
+	if codec != "" && !strings.EqualFold(codec, "unknown") {
+		technical = append(technical, strings.ToUpper(codec))
 	}
 	if station.Bitrate > 0 {
-		parts = append(parts, fmt.Sprintf("%d kbps", station.Bitrate))
+		technical = append(technical, fmt.Sprintf("%d kbps", station.Bitrate))
 	}
-	if len(parts) == 0 {
-		return stationHost(station.URL)
+	details.codec = strings.Join(technical, " · ")
+	if extra != "" {
+		parts = append(parts, extra)
 	}
-	return strings.Join(parts, " · ")
+	if len(parts) == 0 && details.genre == "" {
+		parts = append(parts, stationHost(station.URL))
+	}
+	details.metadata = strings.Join(parts, " · ")
+	return details
 }
 
-func (w *Window) stationDetails(station radio.Station) string {
-	detail := stationMeta(station)
-	if station.ID == w.selected.ID {
-		if w.player.State() == radio.StatePlaying {
-			return "Playing · " + detail
-		}
-		return "Selected · " + detail
+func stationRowDetailView(details stationRowDetails) *widget.RichText {
+	parts := make([]string, 0, 2)
+	if details.genre != "" {
+		parts = append(parts, details.genre)
 	}
-	return detail
+	if details.metadata != "" {
+		parts = append(parts, details.metadata)
+	}
+	text := strings.Join(parts, " · ")
+	if details.codec != "" {
+		if text != "" {
+			text += "\n"
+		}
+		text += details.codec
+	}
+	style := widget.RichTextStyleInline
+	style.ColorName = stationMetadataColorName
+	style.SizeName = stationMetadataSizeName
+	view := widget.NewRichText(&widget.TextSegment{Text: text, Style: style})
+	view.Truncation = fyne.TextTruncateEllipsis
+	return view
 }
 
 func (w *Window) stationIsActive(id string) bool {
@@ -996,7 +1030,8 @@ func (w *Window) emptyState(icon fyne.Resource, title, message string) fyne.Canv
 func (w *Window) stationImage(station radio.Station) *canvas.Image {
 	img := canvas.NewImageFromResource(appIconResource)
 	img.FillMode = canvas.ImageFillContain
-	iconSize := fyne.NewSquareSize(stationArtworkImageSize)
+	img.CornerRadius = stationArtworkCornerRadius
+	iconSize := fyne.NewSquareSize(stationArtworkSize)
 	img.SetMinSize(iconSize)
 	img.Resize(iconSize)
 	if station.ID != "" {
@@ -1032,7 +1067,7 @@ func (w *Window) stationImage(station radio.Station) *canvas.Image {
 }
 
 func stationArtworkFrame(image fyne.CanvasObject) *fyne.Container {
-	return container.NewGridWrap(fyne.NewSquareSize(stationArtworkSize), container.NewPadded(image))
+	return container.NewGridWrap(fyne.NewSquareSize(stationArtworkSize), image)
 }
 
 func stationIconKey(stationID, faviconURL, homepageURL string) string {
@@ -1297,7 +1332,7 @@ func (w *Window) discoveryRows(stations []radio.Station) *fyne.Container {
 	for _, station := range stations {
 		s := station
 		favorite := w.favoriteButton(s)
-		rows.Add(w.stationRow(s, w.stationDetails(s), favorite, func() { w.playStation(s) }, nil))
+		rows.Add(w.stationRow(s, stationMeta(s, ""), favorite, func() { w.playStation(s) }, nil))
 	}
 	return rows
 }
@@ -1750,13 +1785,14 @@ func (w *Window) updatePlayerBar() {
 		if w.selected.ID == "" {
 			art = canvas.NewImageFromResource(appIconResource)
 			art.FillMode = canvas.ImageFillContain
-			art.SetMinSize(fyne.NewSquareSize(stationArtworkImageSize))
-			art.Resize(fyne.NewSquareSize(stationArtworkImageSize))
+			art.CornerRadius = stationArtworkCornerRadius
+			art.SetMinSize(fyne.NewSquareSize(stationArtworkSize))
+			art.Resize(fyne.NewSquareSize(stationArtworkSize))
 		} else {
 			art = w.stationImage(w.selected)
 		}
 		w.playerArt = art
-		w.playerArtwork.Objects = []fyne.CanvasObject{container.NewPadded(art)}
+		w.playerArtwork.Objects = []fyne.CanvasObject{art}
 		w.playerArtwork.Refresh()
 		w.playerArtID = w.selected.ID
 	}

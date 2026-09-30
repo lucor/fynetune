@@ -68,13 +68,13 @@ func TestStationImageKeepsLayoutSize(t *testing.T) {
 	test.NewApp()
 	w := &Window{faviconMissingLogged: make(map[string]bool)}
 	icon := w.stationImage(radio.Station{ID: "station", Name: "Test station"})
-	want := fyne.NewSquareSize(stationArtworkImageSize)
+	want := fyne.NewSquareSize(stationArtworkSize)
 	if got := icon.MinSize(); got != want {
 		t.Fatalf("station icon minimum size = %v, want %v", got, want)
 	}
 }
 
-func TestStationArtworkUsesPaddedSquareFrame(t *testing.T) {
+func TestStationArtworkUsesRoundedSquareFrame(t *testing.T) {
 	test.NewApp()
 	w := &Window{faviconMissingLogged: make(map[string]bool)}
 	icon := w.stationImage(radio.Station{ID: "station", Name: "Test station"})
@@ -85,8 +85,8 @@ func TestStationArtworkUsesPaddedSquareFrame(t *testing.T) {
 	if icon.FillMode != canvas.ImageFillContain {
 		t.Fatalf("station artwork fill mode = %v, want contain", icon.FillMode)
 	}
-	if _, ok := frame.Objects[0].(*fyne.Container); !ok {
-		t.Fatal("station artwork should have internal padding inside its fixed frame")
+	if icon.CornerRadius != stationArtworkCornerRadius {
+		t.Fatalf("station artwork corner radius = %v, want %v", icon.CornerRadius, stationArtworkCornerRadius)
 	}
 }
 
