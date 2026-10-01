@@ -21,6 +21,7 @@ import (
 	"go.lucor.dev/fynetune/internal/metadata/icy"
 	"go.lucor.dev/fynetune/internal/playlist"
 	"go.lucor.dev/fynetune/internal/retry"
+	hlsstream "go.lucor.dev/fynetune/internal/transport/hls"
 	"go.lucor.dev/fynetune/internal/version"
 )
 
@@ -40,13 +41,16 @@ const (
 	maxPlaylistDepth = 3
 )
 
-type Client struct{ client *http.Client }
+type Client struct {
+	client *http.Client
+	hls    *hlsstream.Client
+}
 
 func New(client *http.Client) *Client {
 	if client == nil {
 		client = &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: 15 * time.Second}}
 	}
-	return &Client{client: client}
+	return &Client{client: client, hls: hlsstream.New(client)}
 }
 
 func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
@@ -102,6 +106,9 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 		entries, err := readPlaylist(body, contentType, resolvedURL)
 		closeResponseBody(resp.Body)
 		if err != nil {
+			if errors.Is(err, playlist.ErrUnsupportedHLS) {
+				return c.hls.Open(ctx, resolvedURL)
+			}
 			return nil, media.StreamInfo{}, classifyPlaylistError(err)
 		}
 		if len(entries) == 0 {

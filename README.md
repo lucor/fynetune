@@ -14,12 +14,11 @@ FyneTune is a lightweight desktop internet radio player for Windows, macOS, and 
 
 - Browse and search stations from [Radio Browser](https://www.radio-browser.info/).
 - Save favorite stations, revisit recently played stations, or add a custom stream.
-- Play direct MP3 streams with volume control and automatic reconnection.
+- Listen to a wide range of radio stations with volume control and automatic reconnection.
+- Add stations from stream links and playlist files.
 - Show artist and track information when a station provides ICY metadata.
 - Keep listening from the system tray on supported desktops.
 - Save stations and preferences between launches.
-
-FyneTune currently plays direct MP3 streams. Stations using AAC, HLS, or other formats are not supported yet.
 
 ## Development
 

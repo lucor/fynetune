@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,15 +53,15 @@ func TestOpenNegotiatesAndFiltersICY(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsUnsupportedFormat(t *testing.T) {
+func TestOpenRoutesHLSManifestToHLSClient(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		_, _ = io.WriteString(w, "#EXTM3U\n#EXT-X-TARGETDURATION:6\n")
 	}))
 	defer server.Close()
 	_, _, err := New(server.Client()).Open(context.Background(), server.URL, nil)
-	if !errors.Is(err, playlist.ErrUnsupportedHLS) || !errors.Is(err, ErrUnsupportedStreamFormat) || !retry.IsPermanent(err) {
-		t.Fatalf("error = %v", err)
+	if err == nil || errors.Is(err, playlist.ErrUnsupportedHLS) {
+		t.Fatalf("HLS client error = %v, want a client playback error", err)
 	}
 }
 
@@ -236,15 +237,25 @@ func TestOpenRejectsPlaylistNestingOverflowAndLoop(t *testing.T) {
 	}
 }
 
-func TestOpenM3U8HLSUnsupported(t *testing.T) {
+func TestOpenM3U8RoutesToHLSClient(t *testing.T) {
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		_, _ = io.WriteString(w, "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,segment\npart.ts\n")
 	}))
 	defer server.Close()
-	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/radio.m3u8", nil)
-	if !errors.Is(err, playlist.ErrUnsupportedHLS) || !retry.IsPermanent(err) {
-		t.Fatalf("Open error = %v", err)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	stream, _, err := New(server.Client()).Open(ctx, server.URL+"/radio.m3u8", nil)
+	if stream != nil {
+		defer stream.Close()
+	}
+	if errors.Is(err, playlist.ErrUnsupportedHLS) {
+		t.Fatalf("HLS manifest was rejected by playlist resolver: %v", err)
+	}
+	if requests.Load() < 2 {
+		t.Fatalf("HLS client did not refetch the manifest; request count = %d", requests.Load())
 	}
 }
 
