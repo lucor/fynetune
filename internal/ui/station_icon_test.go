@@ -88,6 +88,9 @@ func TestStationArtworkUsesRoundedSquareFrame(t *testing.T) {
 	if icon.CornerRadius != stationArtworkCornerRadius {
 		t.Fatalf("station artwork corner radius = %v, want %v", icon.CornerRadius, stationArtworkCornerRadius)
 	}
+	if len(frame.Objects) != 1 || frame.Objects[0] != icon {
+		t.Fatalf("station artwork frame should contain only the image, got %#v", frame.Objects)
+	}
 }
 
 func TestUpdatePlayingStationIconUpdatesCurrentArtwork(t *testing.T) {

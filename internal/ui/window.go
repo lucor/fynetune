@@ -1141,21 +1141,24 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 	var icon stationIcon
 	var err error
 	if acquired {
-		if faviconURL != "" {
-			icon, err = downloadStationIcon(ctx, w.faviconClient, faviconURL)
+		if homepageURL != "" {
+			icon, err = downloadHomepageStationIcon(ctx, w.faviconClient, homepageURL)
 			if err != nil {
-				slog.Warn("Radio Browser favicon unavailable; trying station homepage", "station", stationName, "favicon", faviconURL, "reason", err)
+				slog.Warn("station homepage favicon unavailable; trying Radio Browser favicon", "station", stationName, "homepage", homepageURL, "reason", err)
 			}
 		} else {
-			err = fmt.Errorf("radio browser did not provide a favicon URL")
+			err = fmt.Errorf("station homepage URL is unavailable")
 		}
-		if err != nil && homepageURL != "" && ctx.Err() == nil {
-			icon, err = downloadHomepageStationIcon(ctx, w.faviconClient, homepageURL)
+		if err != nil && faviconURL != "" && ctx.Err() == nil {
+			icon, err = downloadStationIcon(ctx, w.faviconClient, faviconURL)
 			if err == nil {
-				slog.Info("station icon loaded from homepage", "station", stationName, "homepage", homepageURL)
+				slog.Info("station icon loaded from Radio Browser favicon", "station", stationName, "favicon", faviconURL)
 			} else {
-				slog.Warn("homepage favicon unavailable; using fallback", "station", stationName, "homepage", homepageURL, "reason", err)
+				slog.Warn("Radio Browser favicon unavailable; using fallback", "station", stationName, "favicon", faviconURL, "reason", err)
 			}
+		}
+		if err == nil && homepageURL != "" {
+			slog.Info("station icon loaded from homepage favicon", "station", stationName, "homepage", homepageURL)
 		}
 	} else {
 		err = ctx.Err()
@@ -1192,9 +1195,9 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 
 func stationIconCacheKey(stationID, sourceKey string) string {
 	if stationID != "" {
-		return "station-icon:v1:id:" + stationID
+		return "station-icon:v2:id:" + stationID
 	}
-	return "station-icon:v1:url:" + sourceKey
+	return "station-icon:v2:url:" + sourceKey
 }
 
 func (w *Window) applyCachedStationIcon(stationID, key string, icon stationIcon, fresh bool) {
