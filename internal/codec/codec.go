@@ -2,13 +2,17 @@
 package codec
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
+	"go.lucor.dev/fynetune/internal/codec/aac"
 	"go.lucor.dev/fynetune/internal/codec/mp3"
 	"go.lucor.dev/fynetune/internal/media"
+	"go.lucor.dev/fynetune/internal/retry"
 )
 
 var (
@@ -36,6 +40,9 @@ func New() *Registry {
 	registry := NewRegistry()
 	registry.Register("MP3", func(reader io.Reader) (Decoder, error) {
 		return mp3.NewDecoder(reader)
+	})
+	registry.Register("AAC", func(reader io.Reader) (Decoder, error) {
+		return aac.NewDecoder(reader)
 	})
 	return registry
 }
@@ -74,9 +81,18 @@ func (r *Registry) Decode(reader io.Reader, info media.StreamInfo) (Decoder, err
 	name := normalize(info.Codec)
 	newDecoder, ok := r.decoders[name]
 	if !ok {
-		return nil, fmt.Errorf("%w %q", ErrUnsupportedCodec, info.Codec)
+		return nil, retry.Permanent(fmt.Errorf("%w %q", ErrUnsupportedCodec, info.Codec))
 	}
-	return newDecoder(reader)
+	decoder, err := newDecoder(reader)
+	if err != nil {
+		err = fmt.Errorf("initialize %s decoder: %w", name, err)
+		var networkErr net.Error
+		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.As(err, &networkErr) {
+			err = retry.Permanent(err)
+		}
+		return nil, err
+	}
+	return decoder, nil
 }
 
 func normalize(name string) string {

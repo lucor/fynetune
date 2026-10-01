@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	fyne.io/fyne/v2 v2.8.1
+	github.com/colespringer/waxflow v0.0.0-20260923050513-446ca3124d89
 	github.com/ebitengine/oto/v3 v3.5.1
 	github.com/fyne-io/image v0.1.1
-	github.com/hajimehoshi/go-mp3 v0.3.4
 	golang.org/x/net v0.59.0
 )
 

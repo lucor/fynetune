@@ -12,6 +12,7 @@ import (
 
 	"github.com/ebitengine/oto/v3"
 	"go.lucor.dev/fynetune/internal/audio"
+	"go.lucor.dev/fynetune/internal/retry"
 )
 
 var (
@@ -33,8 +34,8 @@ type Output struct {
 func New() *Output { return &Output{} }
 
 func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFormat, volume float64) (audio.Playback, error) {
-	if format.SampleRate <= 0 || format.Channels != 2 || format.BitDepth != 16 {
-		return nil, fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth)
+	if format.SampleRate <= 0 || (format.Channels != 1 && format.Channels != 2) || format.BitDepth != 16 {
+		return nil, retry.Permanent(fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth))
 	}
 	o.once.Do(func() {
 		o.context, o.ready, o.err = oto.NewContext(&oto.NewContextOptions{
@@ -43,7 +44,7 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		})
 	})
 	if o.err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrOutputUnavailable, o.err)
+		return nil, retry.Permanent(fmt.Errorf("%w: %w", ErrOutputUnavailable, o.err))
 	}
 	select {
 	case <-ctx.Done():
@@ -54,7 +55,10 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		return nil, err
 	}
 	if err := o.context.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrOutputUnavailable, err)
+		return nil, retry.Permanent(fmt.Errorf("%w: %w", ErrOutputUnavailable, err))
+	}
+	if format.Channels == 1 {
+		source = &monoToStereo{source: source}
 	}
 	if format.SampleRate != outputSampleRate {
 		source = &resampler{source: source, inputRate: format.SampleRate, outputRate: outputSampleRate}
@@ -82,6 +86,30 @@ func (p *otoPlayback) Close() error {
 
 type stereoFrame struct{ left, right int16 }
 
+// monoToStereo duplicates each mono sample into Oto's stereo output.
+type monoToStereo struct{ source io.Reader }
+
+func (r *monoToStereo) Read(dst []byte) (int, error) {
+	dst = dst[:len(dst)/pcmFrameSize*pcmFrameSize]
+	if len(dst) == 0 {
+		return 0, nil
+	}
+	var sample [2]byte
+	written := 0
+	for written < len(dst) {
+		if _, err := io.ReadFull(r.source, sample[:]); err != nil {
+			if written > 0 {
+				return written, nil
+			}
+			return 0, err
+		}
+		copy(dst[written:written+2], sample[:])
+		copy(dst[written+2:written+4], sample[:])
+		written += pcmFrameSize
+	}
+	return written, nil
+}
+
 // resampler converts signed 16-bit stereo PCM to Oto's shared output rate.
 type resampler struct {
 	source            io.Reader
@@ -98,7 +126,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		return 0, nil
 	}
 	if r.inputRate <= 0 || r.outputRate <= 0 {
-		return 0, ErrInvalidSampleRate
+		return 0, retry.Permanent(ErrInvalidSampleRate)
 	}
 	if !r.initialized {
 		left, err := readStereoFrame(r.source)

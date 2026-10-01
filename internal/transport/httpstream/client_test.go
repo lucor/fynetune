@@ -2,6 +2,7 @@ package httpstream
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"go.lucor.dev/fynetune/internal/retry"
 	"go.lucor.dev/fynetune/internal/version"
 )
 
@@ -56,6 +58,61 @@ func TestOpenRejectsUnsupportedFormat(t *testing.T) {
 	_, _, err := New(server.Client()).Open(context.Background(), server.URL, nil)
 	if err == nil || !strings.Contains(err.Error(), "unsupported stream format") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestOpenRejectsPlaylistsByContentTypeAndURL(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, contentType, body string
+	}{
+		{name: "M3U MIME", path: "/stream", contentType: "audio/x-mpegurl"},
+		{name: "PLS MIME", path: "/stream", contentType: "audio/x-scpls"},
+		{name: "M3U8 URL", path: "/stations/live.m3u8", contentType: "application/octet-stream"},
+		{name: "redirected XSPF URL", path: "/redirect", contentType: "application/octet-stream"},
+		{name: "M3U body", path: "/stream", contentType: "application/octet-stream", body: "#EXTM3U\nhttp://radio.invalid/live"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/redirect" {
+					http.Redirect(w, r, "/stations/live.xspf", http.StatusFound)
+					return
+				}
+				w.Header().Set("Content-Type", tc.contentType)
+				body := tc.body
+				if body == "" {
+					w.Header().Set("icy-metaint", "4")
+					body = "test"
+				}
+				_, _ = io.WriteString(w, body)
+			}))
+			defer server.Close()
+			_, _, err := New(server.Client()).Open(context.Background(), server.URL+tc.path, nil)
+			if !errors.Is(err, ErrPlaylistUnsupported) || !errors.Is(err, ErrUnsupportedStreamFormat) || !retry.IsPermanent(err) {
+				t.Fatalf("Open error = %v; expected playlist and unsupported-format errors", err)
+			}
+		})
+	}
+}
+
+func TestHTTPStatusRetryClassification(t *testing.T) {
+	for _, tc := range []struct {
+		status    int
+		permanent bool
+	}{
+		{status: http.StatusNotFound, permanent: true},
+		{status: http.StatusUnauthorized, permanent: true},
+		{status: http.StatusRequestTimeout, permanent: false},
+		{status: http.StatusTooManyRequests, permanent: false},
+		{status: http.StatusServiceUnavailable, permanent: false},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
+			defer server.Close()
+			_, _, err := New(server.Client()).Open(context.Background(), server.URL, nil)
+			if !errors.Is(err, ErrHTTPStatus) || retry.IsPermanent(err) != tc.permanent {
+				t.Fatalf("status %d error = %v, permanent=%v", tc.status, err, retry.IsPermanent(err))
+			}
+		})
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/media"
+	retrypolicy "go.lucor.dev/fynetune/internal/retry"
 )
 
 var (
@@ -172,7 +173,9 @@ func (p *Engine) stopSession() {
 	p.emit(Event{State: StateStopped})
 	p.mu.Unlock()
 	if playback != nil {
-		_ = playback.Close()
+		if err := playback.Close(); err != nil {
+			slog.Warn("could not stop audio playback", "error", err)
+		}
 	}
 }
 
@@ -208,6 +211,11 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 		}
 		if err == nil {
 			err = ErrStreamEnded
+		}
+		slog.Error("radio playback attempt failed", "station", station.Name, "station_id", station.ID, "attempt", attempt+1, "error", err)
+		if retrypolicy.IsPermanent(err) {
+			p.setState(ctx, session, StateError, station, err, attempt)
+			return
 		}
 		p.mu.Lock()
 		retry := p.reconnectEnabled
@@ -257,7 +265,11 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			slog.Warn("could not close radio stream", "station", station.Name, "station_id", station.ID, "error", err)
+		}
+	}()
 	if !p.setState(ctx, session, StateBuffering, station, nil, 0) {
 		return ctx.Err()
 	}
@@ -265,9 +277,13 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	if err != nil {
 		return fmt.Errorf("unable to decode %s stream: %w", info.Codec, err)
 	}
-	defer decoded.Close()
+	defer func() {
+		if err := decoded.Close(); err != nil {
+			slog.Warn("could not close audio decoder", "station", station.Name, "station_id", station.ID, "codec", info.Codec, "error", err)
+		}
+	}()
 	if decoded.SampleRate() <= 0 || decoded.Channels() <= 0 {
-		return ErrInvalidPCMFormat
+		return retrypolicy.Permanent(ErrInvalidPCMFormat)
 	}
 	p.mu.Lock()
 	volume := p.volume
@@ -278,7 +294,9 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	}
 	defer func() {
 		p.clearPlayback(playback)
-		_ = playback.Close()
+		if err := playback.Close(); err != nil {
+			slog.Warn("could not close audio playback", "station", station.Name, "station_id", station.ID, "error", err)
+		}
 	}()
 	p.mu.Lock()
 	if p.session != session || ctx.Err() != nil {

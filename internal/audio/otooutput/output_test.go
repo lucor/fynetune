@@ -36,3 +36,27 @@ func TestResamplerChangesSampleRate(t *testing.T) {
 		}
 	}
 }
+
+func TestMonoToStereoDuplicatesSamples(t *testing.T) {
+	var source bytes.Buffer
+	for _, value := range []int16{-1200, 3400} {
+		var sample [2]byte
+		binary.LittleEndian.PutUint16(sample[:], uint16(value))
+		source.Write(sample[:])
+	}
+	out := make([]byte, 8)
+	reader := &monoToStereo{source: &source}
+	n, err := reader.Read(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(out) {
+		t.Fatalf("read %d bytes, want %d", n, len(out))
+	}
+	want := []int16{-1200, -1200, 3400, 3400}
+	for i, value := range want {
+		if got := int16(binary.LittleEndian.Uint16(out[i*2:])); got != value {
+			t.Errorf("sample %d = %d, want %d", i, got, value)
+		}
+	}
+}

@@ -1,13 +1,18 @@
 package radio
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -187,6 +192,43 @@ func TestStopCancelsPendingReconnect(t *testing.T) {
 		t.Fatalf("state after Stop = %v, want stopped", player.State())
 	}
 	_ = player.Close()
+}
+
+func TestPermanentAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
+	defer slog.SetDefault(previous)
+
+	var opens atomic.Int32
+	streams := streamOpenerFunc(func(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error) {
+		opens.Add(1)
+		return io.NopCloser(strings.NewReader("compressed")), media.StreamInfo{Codec: "AAC"}, nil
+	})
+	decoders := codec.NewRegistry()
+	if err := decoders.Register("AAC", func(io.Reader) (codec.Decoder, error) {
+		return nil, errors.New("invalid ADTS profile 0")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	player := NewPlayer(streams, decoders, testAudioOutput{})
+	player.Play(Station{ID: "aac-station", Name: "AAC test", URL: "http://example.invalid/live"})
+	waitState(t, player, StateError)
+	if err := player.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := logs.String(); !strings.Contains(got, "invalid ADTS profile 0") || !strings.Contains(got, "AAC test") {
+		t.Fatalf("log does not show station and AAC failure cause: %s", got)
+	}
+	if got := opens.Load(); got != 1 {
+		t.Fatalf("stream open attempts = %d, want 1 for a permanent AAC decoder failure", got)
+	}
+}
+
+type streamOpenerFunc func(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error)
+
+func (f streamOpenerFunc) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
+	return f(ctx, url, onMetadata)
 }
 
 func newTestStreamOpener(client *http.Client) StreamOpener {
