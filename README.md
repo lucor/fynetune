@@ -38,8 +38,6 @@ Project tasks are available through mise:
 - `mise run check` runs formatting, static analysis, vulnerability checks, tests, and a build.
 - `mise run test-race` runs tests with Go's race detector.
 
-The app uses the approved SVG icon at runtime; Fyne Tool packaging uses its manually exported PNG counterpart at `internal/ui/assets/icon.png`. Tests use local synthetic streams and do not require an audio device or public radio service.
-
 ### Platform prerequisites
 
 To compile FyneTune for your target platform, install the prerequisites listed by
