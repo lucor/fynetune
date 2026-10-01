@@ -14,6 +14,12 @@ import (
 	"go.lucor.dev/fynetune/internal/audio"
 )
 
+var (
+	ErrUnsupportedPCMFormat = errors.New("unsupported PCM format")
+	ErrOutputUnavailable    = errors.New("audio output unavailable")
+	ErrInvalidSampleRate    = errors.New("invalid PCM sample rate")
+)
+
 const outputSampleRate = 44100
 const pcmFrameSize = 4
 
@@ -28,7 +34,7 @@ func New() *Output { return &Output{} }
 
 func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFormat, volume float64) (audio.Playback, error) {
 	if format.SampleRate <= 0 || format.Channels != 2 || format.BitDepth != 16 {
-		return nil, fmt.Errorf("unsupported PCM format: %d Hz, %d channels, %d-bit", format.SampleRate, format.Channels, format.BitDepth)
+		return nil, fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth)
 	}
 	o.once.Do(func() {
 		o.context, o.ready, o.err = oto.NewContext(&oto.NewContextOptions{
@@ -37,7 +43,7 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		})
 	})
 	if o.err != nil {
-		return nil, fmt.Errorf("audio output unavailable: %w", o.err)
+		return nil, fmt.Errorf("%w: %w", ErrOutputUnavailable, o.err)
 	}
 	select {
 	case <-ctx.Done():
@@ -48,7 +54,7 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		return nil, err
 	}
 	if err := o.context.Err(); err != nil {
-		return nil, fmt.Errorf("audio output unavailable: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrOutputUnavailable, err)
 	}
 	if format.SampleRate != outputSampleRate {
 		source = &resampler{source: source, inputRate: format.SampleRate, outputRate: outputSampleRate}
@@ -92,7 +98,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		return 0, nil
 	}
 	if r.inputRate <= 0 || r.outputRate <= 0 {
-		return 0, errors.New("invalid PCM sample rate")
+		return 0, ErrInvalidSampleRate
 	}
 	if !r.initialized {
 		left, err := readStereoFrame(r.source)

@@ -14,6 +14,12 @@ import (
 	"go.lucor.dev/fynetune/internal/media"
 )
 
+var (
+	ErrStreamEnded         = errors.New("radio stream ended")
+	ErrInvalidPCMFormat    = errors.New("stream decoder returned an invalid PCM format")
+	ErrAudioPlaybackFailed = errors.New("audio playback failed")
+)
+
 type PlayerState int
 
 const (
@@ -63,14 +69,14 @@ type Engine struct {
 	reconnectEnabled bool
 	events           chan Event
 	streams          StreamOpener
-	decoders         codec.Factory
+	decoders         *codec.Registry
 	output           audio.Output
 	active           audio.Playback
 	metadataParsers  map[string]*media.TrackMetadataParser
 	closed           bool
 }
 
-func NewPlayer(streams StreamOpener, decoders codec.Factory, output audio.Output) *Engine {
+func NewPlayer(streams StreamOpener, decoders *codec.Registry, output audio.Output) *Engine {
 	return &Engine{
 		volume: .75, reconnectEnabled: true, events: make(chan Event, 32), streams: streams,
 		decoders: decoders, output: output, metadataParsers: make(map[string]*media.TrackMetadataParser),
@@ -201,7 +207,7 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 			return
 		}
 		if err == nil {
-			err = errors.New("radio stream ended")
+			err = ErrStreamEnded
 		}
 		p.mu.Lock()
 		retry := p.reconnectEnabled
@@ -255,13 +261,13 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	if !p.setState(ctx, session, StateBuffering, station, nil, 0) {
 		return ctx.Err()
 	}
-	decoded, err := p.decoders.New(stream)
+	decoded, err := p.decoders.Decode(stream, info)
 	if err != nil {
 		return fmt.Errorf("unable to decode %s stream: %w", info.Codec, err)
 	}
 	defer decoded.Close()
 	if decoded.SampleRate() <= 0 || decoded.Channels() <= 0 {
-		return errors.New("stream decoder returned an invalid PCM format")
+		return ErrInvalidPCMFormat
 	}
 	p.mu.Lock()
 	volume := p.volume
@@ -298,7 +304,7 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 			return ctx.Err()
 		case <-ticker.C:
 			if err := playback.Err(); err != nil {
-				return fmt.Errorf("audio playback failed: %w", err)
+				return fmt.Errorf("%w: %w", ErrAudioPlaybackFailed, err)
 			}
 			if !playback.IsPlaying() {
 				return io.EOF

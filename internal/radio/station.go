@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+var (
+	ErrStationNameRequired  = errors.New("station name is required")
+	ErrInvalidStreamURL     = errors.New("invalid stream URL")
+	ErrUnsupportedURLScheme = errors.New("stream URL must use HTTP or HTTPS")
+)
+
 type Station struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -24,14 +30,14 @@ func ValidateStation(s Station) error {
 	s.Name = strings.TrimSpace(s.Name)
 	s.URL = strings.TrimSpace(s.URL)
 	if s.Name == "" {
-		return errors.New("station name is required")
+		return ErrStationNameRequired
 	}
 	u, err := url.ParseRequestURI(s.URL)
 	if err != nil || u.Host == "" {
-		return errors.New("enter a valid stream URL")
+		return ErrInvalidStreamURL
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return errors.New("stream URL must use HTTP or HTTPS")
+		return ErrUnsupportedURLScheme
 	}
 	return nil
 }

@@ -3,8 +3,10 @@ package httpstream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +15,12 @@ import (
 	"go.lucor.dev/fynetune/internal/media"
 	"go.lucor.dev/fynetune/internal/metadata/icy"
 	"go.lucor.dev/fynetune/internal/version"
+)
+
+var (
+	ErrHTTPStatus              = errors.New("radio server returned unsuccessful HTTP status")
+	ErrUnsupportedStreamFormat = errors.New("unsupported radio stream format")
+	ErrInvalidICYInterval      = errors.New("invalid ICY metadata interval")
 )
 
 type Client struct{ client *http.Client }
@@ -37,12 +45,12 @@ func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_ = resp.Body.Close()
-		return nil, media.StreamInfo{}, fmt.Errorf("radio server returned HTTP %d", resp.StatusCode)
+		return nil, media.StreamInfo{}, fmt.Errorf("%w: %d", ErrHTTPStatus, resp.StatusCode)
 	}
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
-	if strings.Contains(contentType, "mpegurl") || strings.Contains(contentType, "aac") || strings.Contains(contentType, "application/vnd.apple") {
+	if strings.Contains(contentType, "mpegurl") || strings.Contains(contentType, "application/vnd.apple") {
 		_ = resp.Body.Close()
-		return nil, media.StreamInfo{}, fmt.Errorf("unsupported stream format: %s", contentType)
+		return nil, media.StreamInfo{}, fmt.Errorf("%w: %s", ErrUnsupportedStreamFormat, contentType)
 	}
 	interval, err := metadataInterval(resp.Header)
 	if err != nil {
@@ -59,7 +67,29 @@ func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) 
 	if resp.Request != nil && resp.Request.URL != nil {
 		resolvedURL = resp.Request.URL.String()
 	}
-	return reader, media.StreamInfo{URL: resolvedURL, Codec: "MP3", MIMEType: contentType}, nil
+	return reader, media.StreamInfo{URL: resolvedURL, Codec: streamCodec(contentType), MIMEType: contentType}, nil
+}
+
+func streamCodec(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "MP3"
+	}
+	switch strings.ToLower(mediaType) {
+	case "audio/mpeg", "audio/mp3", "audio/x-mpeg":
+		return "MP3"
+	case "audio/aac", "audio/aacp", "audio/x-aac":
+		return "AAC"
+	case "audio/ogg", "application/ogg":
+		return "OGG"
+	case "audio/opus":
+		return "OPUS"
+	default:
+		if strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
+			return strings.ToUpper(strings.TrimPrefix(strings.ToLower(mediaType), "audio/"))
+		}
+		return "MP3"
+	}
 }
 
 func (c *Client) CloseIdleConnections() { c.client.CloseIdleConnections() }
@@ -71,7 +101,7 @@ func metadataInterval(header http.Header) (int, error) {
 	}
 	interval, err := strconv.Atoi(value)
 	if err != nil || interval <= 0 {
-		return 0, fmt.Errorf("radio server sent an invalid ICY metadata interval %q", value)
+		return 0, fmt.Errorf("%w %q", ErrInvalidICYInterval, value)
 	}
 	return interval, nil
 }

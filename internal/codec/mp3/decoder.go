@@ -5,17 +5,15 @@ import (
 	"io"
 
 	"github.com/hajimehoshi/go-mp3"
-	"go.lucor.dev/fynetune/internal/codec"
 )
 
-type Factory struct{}
-
-func (Factory) New(reader io.Reader) (codec.Decoder, error) {
+// NewDecoder creates a decoder for an MP3 stream.
+func NewDecoder(reader io.Reader) (*Decoder, error) {
 	decoded, err := mp3.NewDecoder(reader)
 	if err != nil {
-		return Decoder{}, err
+		return nil, err
 	}
-	return Decoder{decoded: decoded}, nil
+	return &Decoder{decoded: decoded}, nil
 }
 
 type Decoder struct{ decoded *mp3.Decoder }

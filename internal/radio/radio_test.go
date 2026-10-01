@@ -140,11 +140,7 @@ func TestStopCancelsStreamAndSwitchCancelsPreviousSession(t *testing.T) {
 	}))
 	defer server.Close()
 
-	player := NewPlayer(
-		newTestStreamOpener(server.Client()),
-		testDecoderFactory{},
-		testAudioOutput{},
-	)
+	player := NewPlayer(newTestStreamOpener(server.Client()), testDecoders(t), testAudioOutput{})
 	player.Play(Station{ID: "old", Name: "Old", URL: server.URL + "/old"})
 	waitSignal(t, oldStarted, "old station request")
 	waitState(t, player, StatePlaying)
@@ -163,7 +159,7 @@ func TestStopCancelsStreamAndSwitchCancelsPreviousSession(t *testing.T) {
 
 func TestStopCancelsPendingReconnect(t *testing.T) {
 	opener := &failingStreamOpener{calls: make(chan int, 2)}
-	player := NewPlayer(opener, testDecoderFactory{}, testAudioOutput{})
+	player := NewPlayer(opener, testDecoders(t), testAudioOutput{})
 	player.Play(Station{ID: "radio", Name: "Radio", URL: "http://radio.invalid/live"})
 	select {
 	case count := <-opener.calls:
@@ -249,9 +245,16 @@ func (o *failingStreamOpener) Open(context.Context, string, func(string)) (io.Re
 	return nil, media.StreamInfo{}, io.ErrUnexpectedEOF
 }
 
-type testDecoderFactory struct{}
-
-func (testDecoderFactory) New(io.Reader) (codec.Decoder, error) { return testDecoder{}, nil }
+func testDecoders(t *testing.T) *codec.Registry {
+	t.Helper()
+	decoders := codec.NewRegistry()
+	if err := decoders.Register("MP3", func(io.Reader) (codec.Decoder, error) {
+		return testDecoder{}, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return decoders
+}
 
 type testDecoder struct{}
 

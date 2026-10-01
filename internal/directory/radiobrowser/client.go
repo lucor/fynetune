@@ -4,6 +4,7 @@ package radiobrowser
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/version"
 )
+
+var ErrHTTPStatus = errors.New("radio browser returned unsuccessful HTTP status")
 
 const defaultBaseURL = "https://all.api.radio-browser.info"
 
@@ -130,7 +133,7 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("radio browser returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("%w: %d", ErrHTTPStatus, resp.StatusCode)
 	}
 	decoder := json.NewDecoder(io.LimitReader(resp.Body, 8<<20))
 	if err := decoder.Decode(target); err != nil {

@@ -13,6 +13,12 @@ import (
 const stationMigrationVersion = 3
 const recentStationsPreference = "recent_stations"
 
+var (
+	ErrInvalidStationsPreference = errors.New("saved stations are invalid")
+	ErrInvalidRecentPreference   = errors.New("saved recent stations are invalid")
+	ErrInvalidVolume             = errors.New("volume must be between zero and one")
+)
+
 type Settings struct {
 	AutoPlay, Reconnect, StartMinimized bool
 	Stations                            []radio.Station
@@ -35,7 +41,7 @@ func (s *Store) Load() (Settings, error) {
 	if raw != "" {
 		var rows []radio.Station
 		if err := json.Unmarshal([]byte(raw), &rows); err != nil {
-			return v, fmt.Errorf("saved stations are invalid: %w", err)
+			return v, fmt.Errorf("%w: %w", ErrInvalidStationsPreference, err)
 		}
 		v.Stations = rows
 		if s.p.Int("station_defaults_version") < stationMigrationVersion {
@@ -96,7 +102,7 @@ func (s *Store) LoadRecent() ([]RecentStation, error) {
 	}
 	var recent []RecentStation
 	if err := json.Unmarshal([]byte(raw), &recent); err != nil {
-		return nil, fmt.Errorf("saved recent stations are invalid: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRecentPreference, err)
 	}
 	return recent, nil
 }
@@ -112,7 +118,7 @@ func (s *Store) SaveRecent(recent []RecentStation) error {
 
 func (s *Store) SaveSettings(v Settings) error {
 	if v.Volume < 0 || v.Volume > 1 {
-		return errors.New("volume must be between zero and one")
+		return ErrInvalidVolume
 	}
 	s.p.SetString("selected_station_id", v.Selected)
 	s.p.SetString("discovery_country", v.DiscoveryCountry)
