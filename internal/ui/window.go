@@ -47,6 +47,7 @@ const (
 	pageFavorites
 	pageRecent
 	pageSearch
+	pagePreferences
 )
 
 type Window struct {
@@ -71,6 +72,7 @@ type Window struct {
 	regionContinue                                       *widget.Button
 	countries                                            []radiobrowser.Country
 	navigation, playerBar                                *fyne.Container
+	headerMain, headerPreferences                        *fyne.Container
 	title                                                *widget.Label
 	artist                                               *widget.Label
 	playerArtwork                                        *fyne.Container
@@ -107,6 +109,7 @@ type Window struct {
 	visibleStationRows                                   []*stationTapArea
 	query                                                string
 	page                                                 page
+	pageBeforePreferences                                page
 	recent                                               []recentStation
 	hasTray                                              bool
 	tray                                                 desktop.App
@@ -378,8 +381,13 @@ func (w *Window) build() {
 	logo := canvas.NewImageFromResource(logoResource)
 	logo.FillMode = canvas.ImageFillContain
 	brand := container.NewCenter(container.NewGridWrap(fyne.NewSize(headerLogoWidth, headerLogoHeight), logo))
-	settings := iconButton(theme.SettingsIcon(), func() { w.settingsDialog() })
-	header := container.NewBorder(nil, nil, brand, settings, nil)
+	settings := iconButton(theme.SettingsIcon(), w.openPreferences)
+	w.headerMain = container.NewBorder(nil, nil, brand, settings, nil)
+	back := iconButton(theme.NavigateBackIcon(), w.closePreferences)
+	preferencesTitle := widget.NewLabelWithStyle("Preferences", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	w.headerPreferences = container.NewBorder(nil, nil, back, nil, preferencesTitle)
+	w.headerPreferences.Hide()
+	header := container.NewStack(w.headerMain, w.headerPreferences)
 
 	w.body = container.NewStack()
 	w.title = widget.NewLabelWithStyle("Choose a station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -458,6 +466,25 @@ func (w *Window) showPage(p page) {
 	w.setPage(p)
 }
 
+func (w *Window) openPreferences() {
+	if w.page != pagePreferences {
+		w.pageBeforePreferences = w.page
+	}
+	w.setPage(pagePreferences)
+	w.headerMain.Hide()
+	w.headerPreferences.Show()
+}
+
+func (w *Window) closePreferences() {
+	page := w.pageBeforePreferences
+	if page == pagePreferences {
+		page = pageDiscover
+	}
+	w.showPage(page)
+	w.headerPreferences.Hide()
+	w.headerMain.Show()
+}
+
 func (w *Window) setPage(p page) {
 	w.cancelDirectoryRequest()
 	if w.searchTimer != nil {
@@ -495,6 +522,8 @@ func (w *Window) refreshPage() {
 			content = w.recentPage()
 		case pageSearch:
 			content = w.searchPage()
+		case pagePreferences:
+			content = w.preferencesPage()
 		default:
 			content = w.discoverPage()
 		}
@@ -2027,20 +2056,60 @@ func (w *Window) stationMenu(s radio.Station) {
 	d.Show()
 }
 
-func (w *Window) settingsDialog() {
-	auto := widget.NewCheck("Play last station on startup", func(v bool) { w.settings.AutoPlay = v })
-	auto.SetChecked(w.settings.AutoPlay)
-	rec := widget.NewCheck("Reconnect automatically", func(v bool) { w.settings.Reconnect = v; w.player.SetReconnect(v) })
-	rec.SetChecked(w.settings.Reconnect)
-	min := widget.NewCheck("Start minimized", func(v bool) { w.settings.StartMinimized = v })
-	min.SetChecked(w.settings.StartMinimized)
-	content := container.NewVBox(auto, rec, min)
-	d := dialog.NewCustom("Settings", "Close", content, w.win)
-	d.SetOnClosed(func() { _ = w.store.SaveSettings(w.settings) })
-	d.Show()
+func (w *Window) preferencesPage() *fyne.Container {
+	auto := preferenceCheckRow("Play last station on startup", w.settings.AutoPlay, func(v bool) {
+		w.settings.AutoPlay = v
+		_ = w.store.SaveSettings(w.settings)
+	})
+	rec := preferenceCheckRow("Reconnect automatically", w.settings.Reconnect, func(v bool) {
+		w.settings.Reconnect = v
+		w.player.SetReconnect(v)
+		_ = w.store.SaveSettings(w.settings)
+	})
+	min := preferenceCheckRow("Start minimized", w.settings.StartMinimized, func(v bool) {
+		w.settings.StartMinimized = v
+		_ = w.store.SaveSettings(w.settings)
+	})
+
+	playbackHeading := widget.NewLabelWithStyle("Playback", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	startupHeading := widget.NewLabelWithStyle("Startup", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	aboutHeading := widget.NewLabelWithStyle("About FyneTune", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	startupPreferences := []fyne.CanvasObject{auto}
+	if !w.app.Driver().Device().IsMobile() {
+		startupPreferences = append(startupPreferences, min)
+	}
+	info := version.Current()
+	about := container.NewVBox(aboutHeading, widget.NewLabel("Version "+info.Version))
+	if info.Commit != "" {
+		about.Add(widget.NewLabel("Commit " + version.ShortCommit(info.Commit)))
+	}
+	websiteURL, _ := url.Parse("https://fynetune.lucor.dev")
+	website := widget.NewHyperlink("fynetune.lucor.dev", websiteURL)
+	about.Add(website)
+	return container.NewVBox(
+		playbackHeading,
+		rec,
+		widget.NewSeparator(),
+		startupHeading,
+		container.NewVBox(startupPreferences...),
+		widget.NewSeparator(),
+		about,
+	)
+}
+
+func preferenceCheckRow(label string, checked bool, onChanged func(bool)) fyne.CanvasObject {
+	check := widget.NewCheck("", onChanged)
+	check.SetChecked(checked)
+	checkTouchArea := container.NewCenter(container.NewGridWrap(fyne.NewSize(48, 48), check))
+	text := widget.NewLabel(label)
+	text.Wrapping = fyne.TextWrapWord
+	return container.NewBorder(nil, nil, nil, checkTouchArea, text)
 }
 
 func (w *Window) setAboutMenu() {
+	if runtime.GOOS == "android" {
+		return
+	}
 	about := fyne.NewMenuItem("About", w.aboutDialog)
 	menuName := "Help"
 	if runtime.GOOS == "darwin" {

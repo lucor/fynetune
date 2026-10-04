@@ -163,8 +163,66 @@ jobs:
             dist/FyneTune_*.exe
           if-no-files-found: error
 
+  package-android:
+    name: Package Android APK
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '1'
+      ANDROID_PLATFORM: android-36
+      ANDROID_BUILD_TOOLS: '36.0.0'
+      ANDROID_NDK_VERSION: '30.0.16248370'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set package version from tag
+        run: echo "PACKAGE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Set up the minimum supported Go release
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: oldstable
+          check-latest: true
+
+      - name: Configure Java and Android SDK
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager --install "platform-tools" "platforms;$ANDROID_PLATFORM" \
+            "build-tools;$ANDROID_BUILD_TOOLS" "ndk;$ANDROID_NDK_VERSION"
+
+      - name: Download pinned dependencies
+        run: go mod download
+
+      - name: Build Android APK with Fyne Tool
+        run: |
+          mkdir -p dist
+          # Fyne's --release mode produces an AAB; APKs use development signing.
+          go tool fyne package --os android --name FyneTune \
+            --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png \
+            --app-version "$PACKAGE_VERSION"
+          mv FyneTune.apk "dist/FyneTune_${PACKAGE_VERSION}_android.apk"
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: FyneTune-android
+          path: dist/FyneTune_*_android.apk
+          if-no-files-found: error
+
   release:
-    needs: [package-linux, package-native]
+    needs: [package-linux, package-native, package-android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

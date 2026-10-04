@@ -24,10 +24,13 @@ mise run check
 ```
 
 Go development tools are pinned in `go.mod` and invoked with `go tool`. Do not
-install workflow tools using unpinned `go install ...@latest` commands. Package
-for the current OS with `mise run package`, or select a target with
-`mise run package-macos`, `mise run package-linux`, or
+install workflow tools using unpinned `go install ...@latest` commands. Create
+desktop packages with `mise run package-macos`, `mise run package-linux`, or
 `mise run package-windows`.
+Build an Android development APK with `mise run package-android`. It installs
+the SDK components through `android-setup` and writes `dist/FyneTune.apk`. Run
+`mise install` first for the configured Java and Android SDK tools. See the
+README for SDK overrides and APK signing behavior.
 
 Fyne and Oto require platform development libraries; see the README for the
 platform prerequisites. Keep public documentation, comments, and diagnostics in

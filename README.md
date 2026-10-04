@@ -4,7 +4,7 @@
   <img src="internal/ui/assets/logo.png" alt="FyneTune internet radio player" width="420">
 </p>
 
-FyneTune is a lightweight desktop internet radio player for Windows, macOS, and Linux. Discover stations, save favorites, and listen while the app runs in the background.
+FyneTune is a lightweight internet radio player for Windows, macOS, Linux, and Android. Discover stations, save favorites, and listen while the app runs in the background.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="FyneTune playing an internet radio station" width="360">
@@ -22,7 +22,7 @@ FyneTune is a lightweight desktop internet radio player for Windows, macOS, and 
 
 ## Development
 
-FyneTune is written in Go and uses [Fyne](https://fyne.io/) for its desktop interface. [mise](https://mise.jdx.dev/) manages the Go toolchain and project tasks. Install the platform prerequisites below, then set up dependencies and run the app:
+FyneTune is written in Go and uses [Fyne](https://fyne.io/) for its desktop and Android interfaces. [mise](https://mise.jdx.dev/) manages the Go toolchain and project tasks. Install the platform prerequisites below, then set up dependencies and run the app:
 
 ```sh
 mise install
@@ -34,7 +34,8 @@ Project tasks are available through mise:
 
 - `mise run build` builds the desktop binary to `dist/fynetune`.
 - `mise run licenses` manually generates `THIRD_PARTY_LICENSES` from Go module dependencies.
-- `mise run package` creates a native package for the current platform.
+- `mise run package-macos`, `mise run package-linux`, and `mise run package-windows` create a package for the named desktop platform.
+- `mise run package-android` builds an Android APK.
 - `mise run check` runs formatting, static analysis, vulnerability checks, tests, and a build.
 - `mise run test-race` runs tests with Go's race detector.
 
