@@ -192,10 +192,16 @@ jobs:
 
       - name: Configure Java and Android SDK
         run: |
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          if [[ -z "$sdkmanager" ]]; then
+            echo "sdkmanager was not found under $ANDROID_HOME/cmdline-tools" >&2
+            exit 1
+          fi
           echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          dirname "$sdkmanager" >> "$GITHUB_PATH"
 
       - name: Install Android SDK components
         run: |
