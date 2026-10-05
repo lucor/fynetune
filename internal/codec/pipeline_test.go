@@ -1,4 +1,4 @@
-package codec
+package codec_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	waxaac "github.com/colespringer/waxflow/codec/aac"
 	waxmp3 "github.com/colespringer/waxflow/codec/mp3"
 	appaudio "go.lucor.dev/fynetune/internal/audio"
+	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
 )
 
@@ -44,7 +45,7 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer stream.Close()
-			decoder, err := New().Decode(stream, info)
+			decoder, err := codec.New().Decode(stream, info)
 			if err != nil {
 				t.Fatalf("create decoder: %v", err)
 			}

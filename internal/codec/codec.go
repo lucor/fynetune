@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"strings"
 
@@ -13,6 +14,14 @@ import (
 	"go.lucor.dev/fynetune/internal/codec/mp3"
 	"go.lucor.dev/fynetune/internal/media"
 	"go.lucor.dev/fynetune/internal/retry"
+)
+
+// Codec names used in stream information and by the decoder registry.
+const (
+	NameMP3  = "MP3"
+	NameAAC  = "AAC"
+	NameOGG  = "OGG"
+	NameOPUS = "OPUS"
 )
 
 var (
@@ -38,13 +47,37 @@ type Registry struct {
 // New creates a decoder registry populated with the supported codecs.
 func New() *Registry {
 	registry := NewRegistry()
-	registry.Register("MP3", func(reader io.Reader) (Decoder, error) {
+	registry.Register(NameMP3, func(reader io.Reader) (Decoder, error) {
 		return mp3.NewDecoder(reader)
 	})
-	registry.Register("AAC", func(reader io.Reader) (Decoder, error) {
+	registry.Register(NameAAC, func(reader io.Reader) (Decoder, error) {
 		return aac.NewDecoder(reader)
 	})
 	return registry
+}
+
+// NameFromMIMEType returns the codec name inferred from a stream's media type.
+func NameFromMIMEType(contentType string) string {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "MP3"
+	}
+	mediaType = strings.ToLower(mediaType)
+	switch mediaType {
+	case "audio/mpeg", "audio/mp3", "audio/x-mpeg":
+		return NameMP3
+	case "audio/aac", "audio/aacp", "audio/x-aac":
+		return NameAAC
+	case "audio/ogg", "application/ogg":
+		return NameOGG
+	case "audio/opus":
+		return NameOPUS
+	default:
+		if strings.HasPrefix(mediaType, "audio/") {
+			return strings.ToUpper(strings.TrimPrefix(mediaType, "audio/"))
+		}
+		return NameMP3
+	}
 }
 
 // NewRegistry creates an empty registry. Use it when supplying decoders

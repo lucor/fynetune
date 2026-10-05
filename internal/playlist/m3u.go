@@ -1,7 +1,6 @@
 package playlist
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"strings"
@@ -9,8 +8,7 @@ import (
 
 // ParseM3U parses an M3U or UTF-8 M3U8 playlist. HLS manifests are rejected.
 func ParseM3U(r io.Reader) (Playlist, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), 512<<10)
+	scanner := newScanner(r)
 	var result Playlist
 	var title string
 	seen := false
@@ -19,13 +17,14 @@ func ParseM3U(r io.Reader) (Playlist, error) {
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
 		if lineNumber == 1 {
-			line = strings.TrimPrefix(line, "\xef\xbb\xbf")
+			line = stripBOM(line)
 		}
 		if line == "" {
 			continue
 		}
 		upper := strings.ToUpper(line)
-		if isHLSMarker(upper) {
+		// EXT-X tags identify an HLS manifest rather than a station playlist.
+		if strings.HasPrefix(upper, "#EXT-X-") {
 			return Playlist{}, ErrUnsupportedHLS
 		}
 		if strings.HasPrefix(line, "#") {
@@ -50,8 +49,4 @@ func ParseM3U(r io.Reader) (Playlist, error) {
 		return Playlist{}, ErrEmpty
 	}
 	return result, nil
-}
-
-func isHLSMarker(line string) bool {
-	return strings.HasPrefix(line, "#EXT-X-")
 }

@@ -13,6 +13,8 @@ func TestDetect(t *testing.T) {
 		{name: "M3U content", contentType: "text/plain", prefix: []byte("#EXTM3U\n"), want: KindM3U},
 		{name: "PLS content", contentType: "text/plain", prefix: []byte("[playlist]\n"), want: KindPLS},
 		{name: "unsupported XSPF", contentType: "application/xspf+xml", want: KindUnsupported},
+		{name: "extension identifies playlist despite generic type", contentType: "application/octet-stream", rawURL: "https://radio.example/list.m3u8", want: KindM3U},
+		{name: "signature takes precedence over unsupported type", contentType: "application/xspf+xml", prefix: []byte("#EXTM3U\n"), want: KindM3U},
 		{name: "audio stream", contentType: "audio/mpeg", want: KindNotPlaylist},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

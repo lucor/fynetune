@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/media"
 	"go.lucor.dev/fynetune/internal/metadata/icy"
 	"go.lucor.dev/fynetune/internal/playlist"
@@ -28,7 +28,6 @@ var (
 	ErrPlaylistUnsupported     = errors.New("radio playlist format is not supported")
 	ErrInvalidICYInterval      = errors.New("invalid ICY metadata interval")
 	ErrPlaylistDepth           = errors.New("radio playlist nesting limit exceeded")
-	ErrPlaylistLoop            = errors.New("radio playlist loop detected")
 )
 
 const maxPlaylistDepth = 3
@@ -43,13 +42,10 @@ func New(client *http.Client) *Client {
 }
 
 func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
-	return c.open(ctx, url, onMetadata, 0, make(map[string]struct{}))
+	return c.open(ctx, url, onMetadata, 0)
 }
 
-func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string), depth int, seen map[string]struct{}) (io.ReadCloser, media.StreamInfo, error) {
-	if depth > maxPlaylistDepth {
-		return nil, media.StreamInfo{}, retry.NoRetry(ErrPlaylistDepth)
-	}
+func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, media.StreamInfo{}, err
@@ -69,18 +65,28 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 		resolvedURL = resp.Request.URL.String()
 	}
 	body := bufio.NewReaderSize(resp.Body, 32)
-	kind, err := detectPlaylistKind(ctx, body, contentType, resolvedURL)
-	if err != nil {
+	kind := playlist.Detect(contentType, resolvedURL, nil)
+	// Probe the body only when response metadata does not identify the resource.
+	// Audio responses can be live streams that take time to produce data.
+	if kind == playlist.KindNotPlaylist && !strings.HasPrefix(contentType, "audio/") {
+		prefix, _ := body.Peek(16)
+		kind = playlist.Detect(contentType, resolvedURL, prefix)
+	}
+	if err := ctx.Err(); err != nil {
 		closeResponseBody(resp.Body)
 		return nil, media.StreamInfo{}, err
 	}
-	if kind != playlist.KindNotPlaylist {
-		return c.openPlaylistResponse(ctx, resp.Body, body, kind, contentType, resolvedURL, onMetadata, depth, seen)
+	if kind == playlist.KindNotPlaylist {
+		return openStream(body, resp.Body, resp.Header, contentType, resolvedURL, onMetadata)
 	}
-	// No playlist was detected, so process the response as a direct stream.
-	interval, err := metadataInterval(resp.Header)
+	return c.openPlaylistResponse(ctx, resp.Body, body, kind, contentType, resolvedURL, onMetadata, playlistDepth)
+}
+
+// openStream wraps a response body with ICY metadata filtering and stream information.
+func openStream(reader io.Reader, closer io.Closer, header http.Header, contentType, rawURL string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
+	interval, err := metadataInterval(header)
 	if err != nil {
-		closeResponseBody(resp.Body)
+		closeResponseBody(closer)
 		return nil, media.StreamInfo{}, retry.NoRetry(err)
 	}
 	onTitle := func(raw string) {
@@ -88,16 +94,16 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 			onMetadata(raw)
 		}
 	}
-	reader := &streamReader{Reader: icy.NewReader(body, interval, onTitle), closer: resp.Body}
-	return reader, media.StreamInfo{URL: resolvedURL, Codec: streamCodec(contentType), MIMEType: contentType}, nil
+	stream := &streamReader{Reader: icy.NewReader(reader, interval, onTitle), closer: closer}
+	return stream, media.StreamInfo{URL: rawURL, Codec: codec.NameFromMIMEType(contentType), MIMEType: contentType}, nil
 }
 
-func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(string), depth int, seen map[string]struct{}) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
 	if kind == playlist.KindUnsupported {
 		closeResponseBody(responseBody)
 		return nil, media.StreamInfo{}, retry.NoRetry(fmt.Errorf("%w: %w (content type %q, URL %q)", ErrUnsupportedStreamFormat, ErrPlaylistUnsupported, contentType, rawURL))
 	}
-	if depth >= maxPlaylistDepth {
+	if playlistDepth >= maxPlaylistDepth {
 		closeResponseBody(responseBody)
 		return nil, media.StreamInfo{}, retry.NoRetry(ErrPlaylistDepth)
 	}
@@ -110,11 +116,11 @@ func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadC
 		}
 		return nil, media.StreamInfo{}, classifyPlaylistError(err)
 	}
-	return c.resolvePlaylist(ctx, rawURL, parsed.Entries, onMetadata, depth, seen)
+	return c.resolvePlaylist(ctx, rawURL, parsed.Entries, onMetadata, playlistDepth)
 }
 
 // resolvePlaylist tries each valid stream URL until one opens or all entries fail.
-func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(string), depth int, seen map[string]struct{}) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
 	if len(entries) == 0 {
 		return nil, media.StreamInfo{}, retry.NoRetry(playlist.ErrNoValidEntries)
 	}
@@ -129,13 +135,7 @@ func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []p
 		candidate.Fragment = ""
 		candidate.RawFragment = ""
 		candidateURL := candidate.String()
-		if _, exists := seen[candidateURL]; exists {
-			lastErr = ErrPlaylistLoop
-			continue
-		}
-		seen[candidateURL] = struct{}{}
-		stream, info, err := c.open(ctx, candidateURL, onMetadata, depth+1, seen)
-		delete(seen, candidateURL)
+		stream, info, err := c.open(ctx, candidateURL, onMetadata, playlistDepth+1)
 		if err == nil {
 			return stream, info, nil
 		}
@@ -148,24 +148,10 @@ func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []p
 		lastErr = playlist.ErrNoValidEntries
 	}
 	resolveErr := fmt.Errorf("resolve playlist %q: %w", rawURL, lastErr)
-	if errors.Is(lastErr, playlist.ErrNoValidEntries) || errors.Is(lastErr, ErrPlaylistLoop) || !retry.ShouldRetry(lastErr) {
+	if errors.Is(lastErr, playlist.ErrNoValidEntries) || !retry.ShouldRetry(lastErr) {
 		return nil, media.StreamInfo{}, retry.NoRetry(resolveErr)
 	}
 	return nil, media.StreamInfo{}, resolveErr
-}
-
-// detectPlaylistKind uses response metadata first, then inspects a short body prefix when needed.
-func detectPlaylistKind(ctx context.Context, body *bufio.Reader, contentType, rawURL string) (playlist.Kind, error) {
-	kind := playlist.Detect(contentType, rawURL, nil)
-	if kind != playlist.KindNotPlaylist || strings.HasPrefix(contentType, "audio/") {
-		return kind, nil
-	}
-
-	prefix, _ := body.Peek(16)
-	if err := ctx.Err(); err != nil {
-		return playlist.KindNotPlaylist, err
-	}
-	return playlist.Detect(contentType, rawURL, prefix), nil
 }
 
 // checkStatus closes unsuccessful responses and marks non-retryable statuses.
@@ -199,28 +185,6 @@ func classifyPlaylistError(err error) error {
 func closeResponseBody(body io.Closer) {
 	if err := body.Close(); err != nil {
 		slog.Warn("could not close rejected radio response", "error", err)
-	}
-}
-
-func streamCodec(contentType string) string {
-	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return "MP3"
-	}
-	switch strings.ToLower(mediaType) {
-	case "audio/mpeg", "audio/mp3", "audio/x-mpeg":
-		return "MP3"
-	case "audio/aac", "audio/aacp", "audio/x-aac":
-		return "AAC"
-	case "audio/ogg", "application/ogg":
-		return "OGG"
-	case "audio/opus":
-		return "OPUS"
-	default:
-		if strings.HasPrefix(strings.ToLower(mediaType), "audio/") {
-			return strings.ToUpper(strings.TrimPrefix(strings.ToLower(mediaType), "audio/"))
-		}
-		return "MP3"
 	}
 }
 

@@ -1,7 +1,6 @@
 package playlist
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"sort"
@@ -11,8 +10,7 @@ import (
 
 // ParsePLS parses the FileN and optional TitleN fields in a PLS playlist.
 func ParsePLS(r io.Reader) (Playlist, error) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), 512<<10)
+	scanner := newScanner(r)
 	entries := make(map[int]*Entry)
 	seen := false
 	lineNumber := 0
@@ -20,7 +18,7 @@ func ParsePLS(r io.Reader) (Playlist, error) {
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
 		if lineNumber == 1 {
-			line = strings.TrimPrefix(line, "\xef\xbb\xbf")
+			line = stripBOM(line)
 		}
 		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
 			continue
