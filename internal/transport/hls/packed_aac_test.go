@@ -11,6 +11,7 @@ import (
 	"testing"
 )
 
+// TestOpenFallsBackForPackedAACSegments checks fallback playback of packed AAC media.
 func TestOpenFallsBackForPackedAACSegments(t *testing.T) {
 	wire := append(testADTSFrame([]byte{0x11, 0x22}), testADTSFrame([]byte{0x33, 0x44})...)
 	var segmentRequests atomic.Int32
@@ -49,6 +50,7 @@ func TestOpenFallsBackForPackedAACSegments(t *testing.T) {
 	}
 }
 
+// TestPackedAACFallbackRejectsMPEGTS checks that the fallback rejects non-AAC segments.
 func TestPackedAACFallbackRejectsMPEGTS(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -67,6 +69,7 @@ func TestPackedAACFallbackRejectsMPEGTS(t *testing.T) {
 	}
 }
 
+// testADTSFrame prepends a minimal ADTS header to an AAC payload.
 func testADTSFrame(payload []byte) []byte {
 	length := len(payload) + 7
 	return append([]byte{

@@ -73,8 +73,8 @@ func NameFromMIMEType(contentType string) string {
 	case "audio/opus":
 		return NameOPUS
 	default:
-		if strings.HasPrefix(mediaType, "audio/") {
-			return strings.ToUpper(strings.TrimPrefix(mediaType, "audio/"))
+		if after, ok := strings.CutPrefix(mediaType, "audio/"); ok {
+			return strings.ToUpper(after)
 		}
 		return NameMP3
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
 )
 
+// TestADTSHeader checks the ADTS header fields for AAC-LC stereo at 44.1 kHz.
 func TestADTSHeader(t *testing.T) {
 	codec := &codecs.MPEG4Audio{Config: mpeg4audio.AudioSpecificConfig{
 		Type: mpeg4audio.ObjectTypeAACLC, SampleRate: 44100, ChannelConfig: 2,
@@ -20,6 +21,7 @@ func TestADTSHeader(t *testing.T) {
 	}
 }
 
+// TestADTSHeaderRejectsUnsupportedConfiguration checks invalid channel layouts are rejected.
 func TestADTSHeaderRejectsUnsupportedConfiguration(t *testing.T) {
 	codec := &codecs.MPEG4Audio{Config: mpeg4audio.AudioSpecificConfig{
 		Type: mpeg4audio.ObjectTypeAACLC, SampleRate: 44100, ChannelConfig: 3,
