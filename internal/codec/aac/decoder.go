@@ -23,15 +23,15 @@ func NewDecoder(reader io.Reader) (*Decoder, error) {
 		return nil, fmt.Errorf("aac: read initial ADTS frame: %w", err)
 	}
 	if first.Profile != 1 {
-		return nil, retry.Permanent(fmt.Errorf("aac: ADTS profile %d is unsupported; AAC-LC is required", first.Profile))
+		return nil, retry.NoRetry(fmt.Errorf("aac: ADTS profile %d is unsupported; AAC-LC is required", first.Profile))
 	}
 	asc, err := audioSpecificConfig(first.SampleRate, first.ChannelConfig)
 	if err != nil {
-		return nil, retry.Permanent(err)
+		return nil, retry.NoRetry(err)
 	}
 	cfg, err := waxaac.ParseASC(asc)
 	if err != nil {
-		return nil, retry.Permanent(fmt.Errorf("aac: parse ADTS configuration: %w", err))
+		return nil, retry.NoRetry(fmt.Errorf("aac: parse ADTS configuration: %w", err))
 	}
 	units := [][]byte{first.AccessUnit}
 	var probeErr error
@@ -52,7 +52,7 @@ func NewDecoder(reader io.Reader) (*Decoder, error) {
 		return frame.AccessUnit
 	})
 	if err != nil {
-		return nil, retry.Permanent(fmt.Errorf("aac: detect SBR/PS: %w", err))
+		return nil, retry.NoRetry(fmt.Errorf("aac: detect SBR/PS: %w", err))
 	}
 	if probeErr != nil && probeErr != io.EOF {
 		return nil, fmt.Errorf("aac: read ADTS probe frame: %w", probeErr)
@@ -64,11 +64,11 @@ func NewDecoder(reader io.Reader) (*Decoder, error) {
 	}
 	format, err := cfg.Format()
 	if err != nil {
-		return nil, retry.Permanent(fmt.Errorf("aac: resolve PCM format: %w", err))
+		return nil, retry.NoRetry(fmt.Errorf("aac: resolve PCM format: %w", err))
 	}
 	decoder, err := waxaac.NewDecoder(cfg, format)
 	if err != nil {
-		return nil, retry.Permanent(fmt.Errorf("aac: create WaxFlow decoder: %w", err))
+		return nil, retry.NoRetry(fmt.Errorf("aac: create WaxFlow decoder: %w", err))
 	}
 	return &Decoder{frames: frames, decoder: decoder, config: cfg, format: format, pending: units}, nil
 }
@@ -104,7 +104,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 				return 0, err
 			}
 			if frame.Profile != 1 || frame.SampleRate != d.config.SampleRate || frame.ChannelConfig != d.config.ChannelConfig {
-				return 0, retry.Permanent(fmt.Errorf("aac: ADTS stream configuration changed"))
+				return 0, retry.NoRetry(fmt.Errorf("aac: ADTS stream configuration changed"))
 			}
 			unit = frame.AccessUnit
 		}
@@ -135,7 +135,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 			}
 			return nil
 		}); err != nil {
-			return 0, retry.Permanent(fmt.Errorf("aac: decode access unit: %w", err))
+			return 0, retry.NoRetry(fmt.Errorf("aac: decode access unit: %w", err))
 		}
 	}
 	n := copy(p, d.pcm[d.offset:])

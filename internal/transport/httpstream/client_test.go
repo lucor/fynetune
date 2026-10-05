@@ -179,11 +179,11 @@ func TestOpenRejectsOversizedPlaylist(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "audio/x-mpegurl")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(make([]byte, maxPlaylistBytes+1))
+		_, _ = w.Write(make([]byte, playlist.MaxBytes+1))
 	}))
 	defer server.Close()
 	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/list.m3u", nil)
-	if !errors.Is(err, ErrPlaylistTooLarge) || !retry.IsPermanent(err) {
+	if !errors.Is(err, playlist.ErrTooLarge) || retry.ShouldRetry(err) {
 		t.Fatalf("Open error = %v", err)
 	}
 }
@@ -199,8 +199,8 @@ func TestOpenPlaylistPreservesTransientEntryFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/station.m3u", nil)
-	if !errors.Is(err, ErrHTTPStatus) || retry.IsPermanent(err) {
-		t.Fatalf("Open error = %v, permanent = %t", err, retry.IsPermanent(err))
+	if !errors.Is(err, ErrHTTPStatus) || !retry.ShouldRetry(err) {
+		t.Fatalf("Open error = %v, should retry = %t", err, retry.ShouldRetry(err))
 	}
 }
 
@@ -230,8 +230,8 @@ func TestOpenRejectsPlaylistNestingOverflowAndLoop(t *testing.T) {
 			}))
 			defer server.Close()
 			_, _, err := New(server.Client()).Open(context.Background(), server.URL+tc.path(0), nil)
-			if err == nil || !retry.IsPermanent(err) {
-				t.Fatalf("Open error = %v, want permanent playlist resolution failure", err)
+			if err == nil || retry.ShouldRetry(err) {
+				t.Fatalf("Open error = %v, want non-retryable playlist resolution failure", err)
 			}
 		})
 	}
@@ -270,28 +270,28 @@ func TestOpenRejectsOtherUnsupportedPlaylistFormats(t *testing.T) {
 	}))
 	defer server.Close()
 	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/redirect", nil)
-	if !errors.Is(err, ErrUnsupportedStreamFormat) || !errors.Is(err, ErrPlaylistUnsupported) || !retry.IsPermanent(err) {
+	if !errors.Is(err, ErrUnsupportedStreamFormat) || !errors.Is(err, ErrPlaylistUnsupported) || retry.ShouldRetry(err) {
 		t.Fatalf("Open error = %v", err)
 	}
 }
 
 func TestHTTPStatusRetryClassification(t *testing.T) {
 	for _, tc := range []struct {
-		status    int
-		permanent bool
+		status      int
+		shouldRetry bool
 	}{
-		{status: http.StatusNotFound, permanent: true},
-		{status: http.StatusUnauthorized, permanent: true},
-		{status: http.StatusRequestTimeout, permanent: false},
-		{status: http.StatusTooManyRequests, permanent: false},
-		{status: http.StatusServiceUnavailable, permanent: false},
+		{status: http.StatusNotFound, shouldRetry: false},
+		{status: http.StatusUnauthorized, shouldRetry: false},
+		{status: http.StatusRequestTimeout, shouldRetry: true},
+		{status: http.StatusTooManyRequests, shouldRetry: true},
+		{status: http.StatusServiceUnavailable, shouldRetry: true},
 	} {
 		t.Run(http.StatusText(tc.status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) }))
 			defer server.Close()
 			_, _, err := New(server.Client()).Open(context.Background(), server.URL, nil)
-			if !errors.Is(err, ErrHTTPStatus) || retry.IsPermanent(err) != tc.permanent {
-				t.Fatalf("status %d error = %v, permanent=%v", tc.status, err, retry.IsPermanent(err))
+			if !errors.Is(err, ErrHTTPStatus) || retry.ShouldRetry(err) != tc.shouldRetry {
+				t.Fatalf("status %d error = %v, should retry=%v", tc.status, err, retry.ShouldRetry(err))
 			}
 		})
 	}

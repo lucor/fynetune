@@ -81,14 +81,14 @@ func (r *Registry) Decode(reader io.Reader, info media.StreamInfo) (Decoder, err
 	name := normalize(info.Codec)
 	newDecoder, ok := r.decoders[name]
 	if !ok {
-		return nil, retry.Permanent(fmt.Errorf("%w %q", ErrUnsupportedCodec, info.Codec))
+		return nil, retry.NoRetry(fmt.Errorf("%w %q", ErrUnsupportedCodec, info.Codec))
 	}
 	decoder, err := newDecoder(reader)
 	if err != nil {
 		err = fmt.Errorf("initialize %s decoder: %w", name, err)
 		var networkErr net.Error
 		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.As(err, &networkErr) {
-			err = retry.Permanent(err)
+			err = retry.NoRetry(err)
 		}
 		return nil, err
 	}

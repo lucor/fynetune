@@ -35,17 +35,6 @@ type stationRowTextTheme struct {
 	fyne.Theme
 }
 
-type navItemTheme struct {
-	fyne.Theme
-}
-
-func (t navItemTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	if name == theme.ColorNamePrimary {
-		return brandAccent
-	}
-	return t.Theme.Color(name, variant)
-}
-
 func (t stationRowTextTheme) Size(name fyne.ThemeSizeName) float32 {
 	if name == theme.SizeNameInnerPadding || name == theme.SizeNameLineSpacing {
 		return 0
@@ -84,7 +73,7 @@ type navItem struct {
 	selected         bool
 	onTapped         func()
 	icon             *widget.Icon
-	label            *widget.Label
+	label            *widget.RichText
 	indicator        *canvas.Rectangle
 }
 
@@ -96,12 +85,12 @@ func newNavItem(text string, icon, selectedIcon fyne.Resource, onTapped func()) 
 
 func (n *navItem) CreateRenderer() fyne.WidgetRenderer {
 	n.icon = widget.NewIcon(n.resource)
-	n.label = widget.NewLabel(n.text)
-	n.label.Alignment = fyne.TextAlignCenter
+	style := widget.RichTextStyleInline
+	style.Alignment = fyne.TextAlignCenter
+	n.label = widget.NewRichText(&widget.TextSegment{Text: n.text, Style: style})
 	n.indicator = canvas.NewRectangle(color.Transparent)
 	n.indicator.SetMinSize(fyne.NewSize(navigationIndicatorWidth, navigationIndicatorHeight))
-	label := container.NewThemeOverride(container.NewCenter(n.label), navItemTheme{Theme: n.Theme()})
-	content := container.NewVBox(container.NewCenter(n.indicator), container.NewVBox(container.NewCenter(n.icon), label))
+	content := container.NewVBox(container.NewCenter(n.indicator), container.NewVBox(container.NewCenter(n.icon), container.NewCenter(n.label)))
 	n.applyStyle()
 	return widget.NewSimpleRenderer(content)
 }
@@ -132,13 +121,13 @@ func (n *navItem) applyStyle() {
 	if n.selected && isSVG(icon.Content()) {
 		icon = theme.NewColoredResource(icon, brandAccentColorName)
 	}
+	segment := n.label.Segments[0].(*widget.TextSegment)
+	segment.Style.ColorName = theme.ColorNameForeground
 	if n.selected {
-		n.label.Importance = widget.HighImportance
-	} else {
-		n.label.Importance = widget.MediumImportance
+		segment.Style.ColorName = brandAccentColorName
 	}
 	n.icon.SetResource(icon)
-	n.label.TextStyle.Bold = n.selected
+	segment.Style.TextStyle.Bold = n.selected
 	if n.indicator != nil {
 		if n.selected {
 			n.indicator.FillColor = brandAccent

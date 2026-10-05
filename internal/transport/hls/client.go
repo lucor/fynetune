@@ -62,12 +62,12 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, media.Str
 				}
 			}
 			if selected == nil {
-				err := retry.Permanent(ErrNoAACTrack)
+				err := retry.NoRetry(ErrNoAACTrack)
 				readyOnce.Do(func() { ready <- err })
 				return err
 			}
 			if err := validateAACConfig(audioCodec); err != nil {
-				err = retry.Permanent(err)
+				err = retry.NoRetry(err)
 				readyOnce.Do(func() { ready <- err })
 				return err
 			}
@@ -80,7 +80,7 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, media.Str
 				for _, accessUnit := range accessUnits {
 					header, err := adtsHeader(audioCodec, len(accessUnit))
 					if err != nil {
-						err = retry.Permanent(err)
+						err = retry.NoRetry(err)
 					}
 					if err == nil {
 						_, err = writer.Write(header[:])

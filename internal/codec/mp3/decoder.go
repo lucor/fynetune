@@ -22,7 +22,7 @@ func NewDecoder(reader io.Reader) (*Decoder, error) {
 	}
 	decoded, err := waxmp3.NewDecoder(header.PCMFormat())
 	if err != nil {
-		return nil, retry.Permanent(fmt.Errorf("mp3: create WaxFlow decoder: %w", err))
+		return nil, retry.NoRetry(fmt.Errorf("mp3: create WaxFlow decoder: %w", err))
 	}
 	return &Decoder{frames: frames, decoder: decoded, format: header.PCMFormat(), pending: frame}, nil
 }
@@ -57,7 +57,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 				return 0, err
 			}
 			if h.PCMFormat() != d.format {
-				return 0, retry.Permanent(fmt.Errorf("mp3: stream format changed from %v to %v", d.format, h.PCMFormat()))
+				return 0, retry.NoRetry(fmt.Errorf("mp3: stream format changed from %v to %v", d.format, h.PCMFormat()))
 			}
 		}
 		d.pcm = d.pcm[:0]
@@ -85,7 +85,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 			return nil
 		})
 		if err != nil {
-			return 0, retry.Permanent(fmt.Errorf("mp3: decode frame: %w", err))
+			return 0, retry.NoRetry(fmt.Errorf("mp3: decode frame: %w", err))
 		}
 	}
 	n := copy(p, d.pcm[d.offset:])

@@ -73,6 +73,7 @@ type Engine struct {
 	decoders         *codec.Registry
 	output           audio.Output
 	active           audio.Playback
+	runDone          chan struct{}
 	metadataParsers  map[string]*media.TrackMetadataParser
 	closed           bool
 }
@@ -168,6 +169,8 @@ func (p *Engine) stopSession() {
 	p.session++
 	p.cancel = nil
 	playback := p.active
+	runDone := p.runDone
+	p.runDone = nil
 	p.active = nil
 	p.state = StateStopped
 	p.emit(Event{State: StateStopped})
@@ -176,6 +179,9 @@ func (p *Engine) stopSession() {
 		if err := playback.Close(); err != nil {
 			slog.Warn("could not stop audio playback", "error", err)
 		}
+	}
+	if runDone != nil {
+		<-runDone
 	}
 }
 
@@ -189,9 +195,14 @@ func (p *Engine) Play(station Station) {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.mu.Lock()
 	p.cancel = cancel
+	p.runDone = make(chan struct{})
+	runDone := p.runDone
 	session := p.session
 	p.mu.Unlock()
-	go p.run(ctx, session, station)
+	go func() {
+		defer close(runDone)
+		p.run(ctx, session, station)
+	}()
 }
 
 func (p *Engine) run(ctx context.Context, session uint64, station Station) {
@@ -213,7 +224,7 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 			err = ErrStreamEnded
 		}
 		slog.Error("radio playback attempt failed", "station", station.Name, "station_id", station.ID, "attempt", attempt+1, "error", err)
-		if retrypolicy.IsPermanent(err) {
+		if !retrypolicy.ShouldRetry(err) {
 			p.setState(ctx, session, StateError, station, err, attempt)
 			return
 		}
@@ -283,7 +294,7 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 		}
 	}()
 	if decoded.SampleRate() <= 0 || decoded.Channels() <= 0 {
-		return retrypolicy.Permanent(ErrInvalidPCMFormat)
+		return retrypolicy.NoRetry(ErrInvalidPCMFormat)
 	}
 	p.mu.Lock()
 	volume := p.volume

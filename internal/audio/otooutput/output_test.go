@@ -60,3 +60,31 @@ func TestMonoToStereoDuplicatesSamples(t *testing.T) {
 		}
 	}
 }
+
+func TestPCMConversionReusesBuffers(t *testing.T) {
+	pcm := make([]byte, 8192)
+	out := make([]byte, 4096)
+	for _, name := range []string{"resample", "mono"} {
+		t.Run(name, func(t *testing.T) {
+			source := bytes.NewReader(pcm)
+			resampled := &resampler{source: source, inputRate: 48000, outputRate: 44100}
+			mono := &monoToStereo{source: source}
+			allocations := testing.AllocsPerRun(100, func() {
+				source.Reset(pcm)
+				var n int
+				var err error
+				if name == "resample" {
+					n, err = resampled.Read(out)
+				} else {
+					n, err = mono.Read(out)
+				}
+				if err != nil || n != len(out) {
+					t.Fatalf("read = %d, %v; want %d bytes", n, err, len(out))
+				}
+			})
+			if allocations != 0 {
+				t.Fatalf("PCM conversion allocated %.0f times per read, want zero", allocations)
+			}
+		})
+	}
+}

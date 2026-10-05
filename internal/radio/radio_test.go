@@ -194,7 +194,7 @@ func TestStopCancelsPendingReconnect(t *testing.T) {
 	_ = player.Close()
 }
 
-func TestPermanentAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
+func TestNoRetryAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelError})))
@@ -221,7 +221,7 @@ func TestPermanentAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 		t.Fatalf("log does not show station and AAC failure cause: %s", got)
 	}
 	if got := opens.Load(); got != 1 {
-		t.Fatalf("stream open attempts = %d, want 1 for a permanent AAC decoder failure", got)
+		t.Fatalf("stream open attempts = %d, want 1 for a non-retryable AAC decoder failure", got)
 	}
 }
 

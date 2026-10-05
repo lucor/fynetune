@@ -37,8 +37,8 @@ func TestDecodeStationIcon(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded, err = decodeStationIcon(encoded.Bytes())
-	if err != nil || decoded.image.Bounds().Dx() != 1726 || decoded.image.Bounds().Dy() != 1448 {
-		t.Fatalf("expected large station image to decode for canvas scaling, got %#v (error: %v)", decoded.image, err)
+	if err != nil || decoded.image.Bounds().Dx() != 64 || decoded.image.Bounds().Dy() != 53 {
+		t.Fatalf("expected large station image to be resized for caching, got %#v (error: %v)", decoded.image, err)
 	}
 
 	tooLarge := image.NewRGBA(image.Rect(0, 0, maxStationIconDimension+1, 1))
@@ -61,6 +61,40 @@ func TestDecodeStationIconSVG(t *testing.T) {
 	invalid := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><text>Foo & Bar</text></svg>`)
 	if _, err := decodeStationIcon(invalid); err == nil || !strings.Contains(err.Error(), "invalid SVG") {
 		t.Fatalf("expected malformed SVG error, got %v", err)
+	}
+}
+
+func TestResizeStationIcon(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		width, height int
+		want          image.Point
+	}{
+		{"small", 32, 32, image.Pt(32, 32)},
+		{"square", 1024, 1024, image.Pt(64, 64)},
+		{"landscape", 1024, 512, image.Pt(64, 32)},
+		{"portrait", 512, 1024, image.Pt(32, 64)},
+		{"narrow", 1, 4096, image.Pt(1, 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := image.NewNRGBA(image.Rect(10, 20, 10+tc.width, 20+tc.height))
+			for y := source.Bounds().Min.Y; y < source.Bounds().Max.Y; y++ {
+				for x := source.Bounds().Min.X; x < source.Bounds().Max.X; x++ {
+					source.SetNRGBA(x, y, color.NRGBA{R: 200, A: 128})
+				}
+			}
+			resized := resizeStationIcon(source)
+			if got := resized.Bounds().Size(); got != tc.want {
+				t.Fatalf("size = %v, want %v", got, tc.want)
+			}
+			bounds := resized.Bounds()
+			if got := color.NRGBAModel.Convert(resized.At(bounds.Min.X, bounds.Min.Y)); got != (color.NRGBA{R: 200, A: 128}) {
+				t.Fatalf("resized pixel = %v, want original color and transparency", got)
+			}
+			if tc.name == "small" && resized != source {
+				t.Fatal("small icons should reuse the decoded image")
+			}
+		})
 	}
 }
 
@@ -158,8 +192,8 @@ func TestDownloadHomepageStationIcon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download homepage favicon: %v", err)
 	}
-	if icon.image == nil || icon.image.Bounds().Dx() != 128 || icon.image.Bounds().Dy() != 128 {
-		t.Fatalf("expected original 128x128 homepage icon dimensions, got %#v", icon.image)
+	if icon.image == nil || icon.image.Bounds().Dx() != 64 || icon.image.Bounds().Dy() != 64 {
+		t.Fatalf("expected resized 64x64 homepage icon dimensions, got %#v", icon.image)
 	}
 }
 

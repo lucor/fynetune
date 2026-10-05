@@ -8,7 +8,6 @@ import (
 	"log/slog"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/theme"
 )
 
 const (
@@ -21,17 +20,6 @@ var (
 	favoriteRowOutline = tintFavoriteResource(favoriteOutlineResource, favoriteNeutral)
 	favoriteRowFilled  = tintFavoriteResource(favoriteFilledResource, brandAccent)
 )
-
-type favoriteButtonTheme struct {
-	fyne.Theme
-}
-
-func (t favoriteButtonTheme) Size(name fyne.ThemeSizeName) float32 {
-	if name == theme.SizeNameInlineIcon {
-		return favoriteIconSize
-	}
-	return t.Theme.Size(name)
-}
 
 // Use the existing PNG's alpha as a mask to preserve its shape and smooth edges.
 func tintFavoriteResource(resource fyne.Resource, tint color.NRGBA) fyne.Resource {

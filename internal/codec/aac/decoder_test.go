@@ -52,13 +52,13 @@ func TestDecoderWaxFlowAACProfiles(t *testing.T) {
 	}
 }
 
-func TestUnsupportedADTSProfileIsPermanent(t *testing.T) {
+func TestUnsupportedADTSProfileIsNoRetry(t *testing.T) {
 	first := testADTSFrame([]byte{0x00}, 3, 2)
 	first[2] &^= 0xc0 // Main profile instead of the supported AAC-LC core.
 	wire := append(first, first...)
 	_, err := NewDecoder(bytes.NewReader(wire))
-	if err == nil || !retry.IsPermanent(err) {
-		t.Fatalf("decoder error = %v, want a permanent unsupported-profile error", err)
+	if err == nil || retry.ShouldRetry(err) {
+		t.Fatalf("decoder error = %v, want a non-retryable unsupported-profile error", err)
 	}
 }
 

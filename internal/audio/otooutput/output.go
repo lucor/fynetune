@@ -35,7 +35,7 @@ func New() *Output { return &Output{} }
 
 func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFormat, volume float64) (audio.Playback, error) {
 	if format.SampleRate <= 0 || (format.Channels != 1 && format.Channels != 2) || format.BitDepth != 16 {
-		return nil, retry.Permanent(fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth))
+		return nil, retry.NoRetry(fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth))
 	}
 	o.once.Do(func() {
 		o.context, o.ready, o.err = oto.NewContext(&oto.NewContextOptions{
@@ -44,7 +44,7 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		})
 	})
 	if o.err != nil {
-		return nil, retry.Permanent(fmt.Errorf("%w: %w", ErrOutputUnavailable, o.err))
+		return nil, retry.NoRetry(fmt.Errorf("%w: %w", ErrOutputUnavailable, o.err))
 	}
 	select {
 	case <-ctx.Done():
@@ -55,7 +55,7 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 		return nil, err
 	}
 	if err := o.context.Err(); err != nil {
-		return nil, retry.Permanent(fmt.Errorf("%w: %w", ErrOutputUnavailable, err))
+		return nil, retry.NoRetry(fmt.Errorf("%w: %w", ErrOutputUnavailable, err))
 	}
 	if format.Channels == 1 {
 		source = &monoToStereo{source: source}
@@ -87,24 +87,26 @@ func (p *otoPlayback) Close() error {
 type stereoFrame struct{ left, right int16 }
 
 // monoToStereo duplicates each mono sample into Oto's stereo output.
-type monoToStereo struct{ source io.Reader }
+type monoToStereo struct {
+	source io.Reader
+	sample [2]byte
+}
 
 func (r *monoToStereo) Read(dst []byte) (int, error) {
 	dst = dst[:len(dst)/pcmFrameSize*pcmFrameSize]
 	if len(dst) == 0 {
 		return 0, nil
 	}
-	var sample [2]byte
 	written := 0
 	for written < len(dst) {
-		if _, err := io.ReadFull(r.source, sample[:]); err != nil {
+		if _, err := io.ReadFull(r.source, r.sample[:]); err != nil {
 			if written > 0 {
 				return written, nil
 			}
 			return 0, err
 		}
-		copy(dst[written:written+2], sample[:])
-		copy(dst[written+2:written+4], sample[:])
+		copy(dst[written:written+2], r.sample[:])
+		copy(dst[written+2:written+4], r.sample[:])
 		written += pcmFrameSize
 	}
 	return written, nil
@@ -118,6 +120,7 @@ type resampler struct {
 	phase             int64
 	left, right       stereoFrame
 	initialized, done bool
+	frameBytes        [pcmFrameSize]byte
 }
 
 func (r *resampler) Read(dst []byte) (int, error) {
@@ -126,14 +129,14 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		return 0, nil
 	}
 	if r.inputRate <= 0 || r.outputRate <= 0 {
-		return 0, retry.Permanent(ErrInvalidSampleRate)
+		return 0, retry.NoRetry(ErrInvalidSampleRate)
 	}
 	if !r.initialized {
-		left, err := readStereoFrame(r.source)
+		left, err := r.readFrame()
 		if err != nil {
 			return 0, err
 		}
-		right, err := readStereoFrame(r.source)
+		right, err := r.readFrame()
 		if err != nil {
 			return 0, err
 		}
@@ -154,7 +157,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		for r.phase >= int64(r.outputRate) {
 			r.phase -= int64(r.outputRate)
 			r.left = r.right
-			next, err := readStereoFrame(r.source)
+			next, err := r.readFrame()
 			if err != nil {
 				r.done = true
 				break
@@ -168,9 +171,11 @@ func (r *resampler) Read(dst []byte) (int, error) {
 	return written, nil
 }
 
-func readStereoFrame(source io.Reader) (stereoFrame, error) {
-	var b [pcmFrameSize]byte
-	if _, err := io.ReadFull(source, b[:]); err != nil {
+func (r *resampler) readFrame() (stereoFrame, error) {
+	// Reuse the frame bytes: a local array escapes through io.Reader on every
+	// sample, allocating tens of thousands of tiny buffers per second.
+	b := r.frameBytes[:]
+	if _, err := io.ReadFull(r.source, b); err != nil {
 		return stereoFrame{}, err
 	}
 	return stereoFrame{left: int16(binary.LittleEndian.Uint16(b[:2])), right: int16(binary.LittleEndian.Uint16(b[2:]))}, nil
