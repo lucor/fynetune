@@ -18,7 +18,6 @@ import (
 
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
-	"go.lucor.dev/fynetune/internal/media"
 )
 
 func TestStationJSONAndValidation(t *testing.T) {
@@ -42,84 +41,8 @@ func TestStationJSONAndValidation(t *testing.T) {
 	}
 }
 
-func TestParseTrackMetadata(t *testing.T) {
-	got := ParseTrackMetadata(" Foo Fighters - Everlong ")
-	if got.RawTitle != "Foo Fighters - Everlong" || got.Artist != "Foo Fighters" || got.Title != "Everlong" || !got.Parsed {
-		t.Fatalf("metadata = %+v", got)
-	}
-	got = ParseTrackMetadata("Station identification")
-	if got.RawTitle != "Station identification" || got.Artist != "" || got.Title != got.RawTitle || got.Parsed {
-		t.Fatalf("unstructured metadata = %+v", got)
-	}
-}
-
-func TestMetadataLearningIsPerStation(t *testing.T) {
-	player := NewPlayer(nil, nil, nil)
-	defer player.Close()
-
-	stationA := Station{ID: "station-a", Name: "A", URL: "https://example.com/a"}
-	stationB := Station{ID: "station-b", Name: "B", URL: "https://example.com/b"}
-	for _, title := range []string{"A1 ~ One", "A2 ~ Two", "A3 ~ Three", "A4 ~ Four"} {
-		player.parseMetadata(stationA, title)
-	}
-	for _, title := range []string{"B1 - One", "B2 - Two", "B3 - Three", "B4 - Four"} {
-		player.parseMetadata(stationB, title)
-	}
-
-	gotA := player.parseMetadata(stationA, "Pink Floyd ~ Another Brick - Part 2")
-	if !gotA.Parsed || gotA.Artist != "Pink Floyd" || gotA.Title != "Another Brick - Part 2" {
-		t.Fatalf("station A metadata after reconnect = %+v", gotA)
-	}
-	gotB := player.parseMetadata(stationB, "AC-DC - Thunderstruck ~ Live")
-	if !gotB.Parsed || gotB.Artist != "AC-DC" || gotB.Title != "Thunderstruck ~ Live" {
-		t.Fatalf("station B metadata = %+v", gotB)
-	}
-}
-
-func TestMetadataLearningSurvivesStreamReconnect(t *testing.T) {
-	station := Station{ID: "station-a", Name: "A", URL: "https://example.com/a"}
-	opener := &metadataSequenceOpener{
-		sequences: [][]string{
-			{"A ~ One", "B ~ Two", "C ~ Three", "D ~ Four"},
-			{"Pink Floyd ~ Another Brick - Part 2"},
-		},
-		calls: make(chan int, 2),
-	}
-	player := NewPlayer(opener, nil, nil)
-	player.mu.Lock()
-	player.session = 1
-	player.mu.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		player.run(ctx, 1, station)
-	}()
-	defer func() {
-		cancel()
-		waitSignal(t, done, "player run cancellation")
-		_ = player.Close()
-	}()
-
-	for want := 1; want <= 2; want++ {
-		select {
-		case call := <-opener.calls:
-			if call != want {
-				t.Fatalf("stream open call = %d, want %d", call, want)
-			}
-		case <-time.After(4 * time.Second):
-			t.Fatalf("stream open call %d did not occur", want)
-		}
-	}
-
-	got := player.parseMetadata(station, "Later Artist ~ Title - Remix")
-	if !got.Parsed || got.Artist != "Later Artist" || got.Title != "Title - Remix" {
-		t.Fatalf("metadata after reconnect = %+v", got)
-	}
-}
-
 func TestRetryDelay(t *testing.T) {
-	if RetryDelay(1) != time.Second || RetryDelay(2) != 2*time.Second || RetryDelay(20) != 30*time.Second {
+	if retryDelay(1) != time.Second || retryDelay(2) != 2*time.Second || retryDelay(20) != 30*time.Second {
 		t.Fatal("unexpected backoff")
 	}
 }
@@ -201,9 +124,9 @@ func TestNoRetryAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 	defer slog.SetDefault(previous)
 
 	var opens atomic.Int32
-	streams := streamOpenerFunc(func(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error) {
+	streams := streamOpenerFunc(func(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 		opens.Add(1)
-		return io.NopCloser(strings.NewReader("compressed")), media.StreamInfo{Codec: "AAC"}, nil
+		return io.NopCloser(strings.NewReader("compressed")), codec.StreamInfo{Codec: "AAC"}, nil
 	})
 	decoders := codec.NewRegistry()
 	if err := decoders.Register("AAC", func(io.Reader) (codec.Decoder, error) {
@@ -225,9 +148,9 @@ func TestNoRetryAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 	}
 }
 
-type streamOpenerFunc func(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error)
+type streamOpenerFunc func(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error)
 
-func (f streamOpenerFunc) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
+func (f streamOpenerFunc) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 	return f(ctx, url, onMetadata)
 }
 
@@ -237,16 +160,16 @@ func newTestStreamOpener(client *http.Client) StreamOpener {
 
 type testHTTPStreamOpener struct{ client *http.Client }
 
-func (o *testHTTPStreamOpener) Open(ctx context.Context, url string, _ func(string)) (io.ReadCloser, media.StreamInfo, error) {
+func (o *testHTTPStreamOpener) Open(ctx context.Context, url string, _ func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
 	resp, err := o.client.Do(req)
 	if err != nil {
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
-	return resp.Body, media.StreamInfo{URL: url, Codec: "MP3", MIMEType: "audio/mpeg"}, nil
+	return resp.Body, codec.StreamInfo{URL: url, Codec: "MP3", MIMEType: "audio/mpeg"}, nil
 }
 
 type failingStreamOpener struct {
@@ -255,36 +178,13 @@ type failingStreamOpener struct {
 	calls chan int
 }
 
-type metadataSequenceOpener struct {
-	mu        sync.Mutex
-	attempt   int
-	sequences [][]string
-	calls     chan int
-}
-
-func (o *metadataSequenceOpener) Open(_ context.Context, _ string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
-	o.mu.Lock()
-	attempt := o.attempt
-	o.attempt++
-	var sequence []string
-	if attempt < len(o.sequences) {
-		sequence = append(sequence, o.sequences[attempt]...)
-	}
-	o.mu.Unlock()
-	for _, title := range sequence {
-		onMetadata(title)
-	}
-	o.calls <- attempt + 1
-	return nil, media.StreamInfo{}, io.ErrUnexpectedEOF
-}
-
-func (o *failingStreamOpener) Open(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error) {
+func (o *failingStreamOpener) Open(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 	o.mu.Lock()
 	o.count++
 	count := o.count
 	o.mu.Unlock()
 	o.calls <- count
-	return nil, media.StreamInfo{}, io.ErrUnexpectedEOF
+	return nil, codec.StreamInfo{}, io.ErrUnexpectedEOF
 }
 
 func testDecoders(t *testing.T) *codec.Registry {

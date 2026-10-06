@@ -12,16 +12,25 @@ import (
 
 	"go.lucor.dev/fynetune/internal/codec/aac"
 	"go.lucor.dev/fynetune/internal/codec/mp3"
-	"go.lucor.dev/fynetune/internal/media"
 	"go.lucor.dev/fynetune/internal/retry"
 )
 
-// Codec names used in stream information and by the decoder registry.
+// StreamInfo describes the source and codec of an opened audio stream.
+type StreamInfo struct {
+	URL      string    // URL of the resolved audio stream.
+	Codec    CodecName // Codec selected for decoding.
+	MIMEType string    // MIME type reported for the stream.
+}
+
+// CodecName identifies an audio codec supported by the decoder registry.
+type CodecName string
+
+// Names of built-in audio codecs used in stream information and by the decoder registry.
 const (
-	NameMP3  = "MP3"
-	NameAAC  = "AAC"
-	NameOGG  = "OGG"
-	NameOPUS = "OPUS"
+	NameMP3  CodecName = "MP3"
+	NameAAC  CodecName = "AAC"
+	NameOGG  CodecName = "OGG"
+	NameOPUS CodecName = "OPUS"
 )
 
 var (
@@ -47,7 +56,7 @@ type Decoder interface {
 
 // Registry selects a decoder based on the codec identified for a stream.
 type Registry struct {
-	decoders map[string]func(io.Reader) (Decoder, error)
+	decoders map[CodecName]func(io.Reader) (Decoder, error)
 }
 
 // New creates a decoder registry populated with the supported codecs.
@@ -66,7 +75,7 @@ func New() *Registry {
 // malformed types and generic octet-stream types default to MP3 for radio
 // servers that omit a useful content type. Other unknown media types are
 // returned in uppercase so the registry can report them as unsupported.
-func NameFromMIMEType(contentType string) string {
+func NameFromMIMEType(contentType string) CodecName {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil || mediaType == "" {
 		return NameMP3
@@ -85,21 +94,21 @@ func NameFromMIMEType(contentType string) string {
 		return NameMP3
 	default:
 		if after, ok := strings.CutPrefix(mediaType, "audio/"); ok {
-			return strings.ToUpper(after)
+			return CodecName(strings.ToUpper(after))
 		}
-		return strings.ToUpper(mediaType)
+		return CodecName(strings.ToUpper(mediaType))
 	}
 }
 
 // NewRegistry creates an empty registry. Use it when supplying decoders
 // explicitly, such as in tests or a custom application configuration.
 func NewRegistry() *Registry {
-	return &Registry{decoders: make(map[string]func(io.Reader) (Decoder, error))}
+	return &Registry{decoders: make(map[CodecName]func(io.Reader) (Decoder, error))}
 }
 
 // Register adds a decoder for a codec name. Codec names are matched without
 // regard to case or surrounding whitespace.
-func (r *Registry) Register(name string, newDecoder func(io.Reader) (Decoder, error)) error {
+func (r *Registry) Register(name CodecName, newDecoder func(io.Reader) (Decoder, error)) error {
 	if r == nil {
 		return ErrNilRegistry
 	}
@@ -118,7 +127,7 @@ func (r *Registry) Register(name string, newDecoder func(io.Reader) (Decoder, er
 }
 
 // Decode creates the decoder registered for the stream's codec.
-func (r *Registry) Decode(reader io.Reader, info media.StreamInfo) (Decoder, error) {
+func (r *Registry) Decode(reader io.Reader, info StreamInfo) (Decoder, error) {
 	if r == nil {
 		return nil, ErrNilRegistry
 	}
@@ -140,6 +149,6 @@ func (r *Registry) Decode(reader io.Reader, info media.StreamInfo) (Decoder, err
 }
 
 // normalize trims surrounding whitespace and uppercases a codec name.
-func normalize(name string) string {
-	return strings.ToUpper(strings.TrimSpace(name))
+func normalize(name CodecName) CodecName {
+	return CodecName(strings.ToUpper(strings.TrimSpace(string(name))))
 }

@@ -2,7 +2,8 @@ package radio
 
 import "time"
 
-func RetryDelay(attempt int) time.Duration {
+// retryDelay returns the capped exponential backoff for a reconnect attempt.
+func retryDelay(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
 	}

@@ -9,7 +9,7 @@ import (
 	"github.com/colespringer/waxflow/audio"
 	"github.com/colespringer/waxflow/codec"
 	waxmp3 "github.com/colespringer/waxflow/codec/mp3"
-	"go.lucor.dev/fynetune/internal/metadata/icy"
+	"go.lucor.dev/fynetune/internal/icy"
 )
 
 // testMP3Frame returns a minimal MPEG-1 Layer III frame fixture.

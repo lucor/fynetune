@@ -7,11 +7,15 @@ import (
 )
 
 var (
-	ErrStationNameRequired  = errors.New("station name is required")
-	ErrInvalidStreamURL     = errors.New("invalid stream URL")
+	// ErrStationNameRequired indicates that a station has no name.
+	ErrStationNameRequired = errors.New("station name is required")
+	// ErrInvalidStreamURL indicates that a station URL is not an absolute URL.
+	ErrInvalidStreamURL = errors.New("invalid stream URL")
+	// ErrUnsupportedURLScheme indicates that a station URL is not HTTP or HTTPS.
 	ErrUnsupportedURLScheme = errors.New("stream URL must use HTTP or HTTPS")
 )
 
+// Station contains a saved or directory-provided radio station.
 type Station struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
@@ -26,6 +30,7 @@ type Station struct {
 	Tags        []string `json:"tags,omitempty"`
 }
 
+// ValidateStation checks that a station has a name and an HTTP or HTTPS stream URL.
 func ValidateStation(s Station) error {
 	s.Name = strings.TrimSpace(s.Name)
 	s.URL = strings.TrimSpace(s.URL)

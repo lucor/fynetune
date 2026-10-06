@@ -1,3 +1,4 @@
+// Package radio models stations and coordinates stream playback.
 package radio
 
 import (
@@ -11,41 +12,42 @@ import (
 
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
-	"go.lucor.dev/fynetune/internal/media"
+	"go.lucor.dev/fynetune/internal/icy"
 	retrypolicy "go.lucor.dev/fynetune/internal/retry"
 )
 
 var (
-	ErrStreamEnded         = errors.New("radio stream ended")
-	ErrInvalidPCMFormat    = errors.New("stream decoder returned an invalid PCM format")
+	// ErrStreamEnded indicates that a stream ended without a playback error.
+	ErrStreamEnded = errors.New("radio stream ended")
+	// ErrInvalidPCMFormat indicates that a decoder returned an invalid audio format.
+	ErrInvalidPCMFormat = errors.New("stream decoder returned an invalid PCM format")
+	// ErrAudioPlaybackFailed indicates that the audio output failed during playback.
 	ErrAudioPlaybackFailed = errors.New("audio playback failed")
 )
 
+// PlayerState is the current state of radio playback.
 type PlayerState int
 
 const (
-	StateStopped PlayerState = iota
-	StateConnecting
-	StateBuffering
-	StatePlaying
-	StateReconnecting
-	StateError
+	StateStopped      PlayerState = iota // No station is playing.
+	StateConnecting                      // The player is opening a stream.
+	StateBuffering                       // The stream is open and the decoder is starting.
+	StatePlaying                         // Audio is playing.
+	StateReconnecting                    // The player is waiting to retry a failed stream.
+	StateError                           // Playback stopped after a non-retryable failure.
 )
 
-type TrackMetadata = media.TrackMetadata
-type StreamInfo = media.StreamInfo
-
-func ParseTrackMetadata(raw string) TrackMetadata { return media.ParseTrackMetadata(raw) }
-
+// Event reports a playback state change or a track metadata update.
 type Event struct {
-	State      PlayerState
-	Station    Station
-	Metadata   TrackMetadata
-	StreamInfo StreamInfo
-	Err        error
-	Attempt    int
+	State      PlayerState       // Playback state associated with this event.
+	Station    Station           // Station associated with this event, when available.
+	Metadata   icy.TrackMetadata // Track metadata; zero-valued for state-only events.
+	StreamInfo codec.StreamInfo  // Resolved stream information, when available.
+	Err        error             // Failure that caused a reconnect or stopped playback.
+	Attempt    int               // Reconnect attempt count; zero before the first retry.
 }
 
+// Player controls station playback and exposes playback events to the UI.
 type Player interface {
 	Play(Station)
 	Stop()
@@ -56,10 +58,12 @@ type Player interface {
 	Close() error
 }
 
+// StreamOpener resolves a station URL and opens its audio stream.
 type StreamOpener interface {
-	Open(context.Context, string, func(string)) (io.ReadCloser, media.StreamInfo, error)
+	Open(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error)
 }
 
+// Engine coordinates stream resolution, decoding, audio output, and reconnects.
 type Engine struct {
 	lifecycle        sync.Mutex
 	mu               sync.Mutex
@@ -74,55 +78,35 @@ type Engine struct {
 	output           audio.Output
 	active           audio.Playback
 	runDone          chan struct{}
-	metadataParsers  map[string]*media.TrackMetadataParser
 	closed           bool
 }
 
+// NewPlayer creates a player using the supplied stream, decoder, and audio output implementations.
 func NewPlayer(streams StreamOpener, decoders *codec.Registry, output audio.Output) *Engine {
 	return &Engine{
 		volume: .75, reconnectEnabled: true, events: make(chan Event, 32), streams: streams,
-		decoders: decoders, output: output, metadataParsers: make(map[string]*media.TrackMetadataParser),
+		decoders: decoders, output: output,
 	}
 }
 
-func (p *Engine) parseMetadataLocked(station Station, raw string) TrackMetadata {
-	key := ""
-	switch {
-	case station.ID != "":
-		key = "id:" + station.ID
-	case station.URL != "":
-		key = "url:" + station.URL
-	default:
-		key = "name:" + station.Name
-	}
-	parser := p.metadataParsers[key]
-	if parser == nil {
-		parser = media.NewTrackMetadataParser()
-		p.metadataParsers[key] = parser
-	}
-	return parser.Parse(raw)
-}
-
-func (p *Engine) parseMetadata(station Station, raw string) TrackMetadata {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.parseMetadataLocked(station, raw)
-}
-
+// Events returns the channel that receives playback state and metadata events.
 func (p *Engine) Events() <-chan Event { return p.events }
 
+// SetReconnect enables or disables automatic reconnect attempts.
 func (p *Engine) SetReconnect(enabled bool) {
 	p.mu.Lock()
 	p.reconnectEnabled = enabled
 	p.mu.Unlock()
 }
 
+// State returns the current playback state.
 func (p *Engine) State() PlayerState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.state
 }
 
+// emit queues an event without blocking the playback goroutine.
 func (p *Engine) emit(event Event) {
 	select {
 	case p.events <- event:
@@ -130,6 +114,7 @@ func (p *Engine) emit(event Event) {
 	}
 }
 
+// setState updates playback state only while the supplied session remains active.
 func (p *Engine) setState(ctx context.Context, session uint64, state PlayerState, station Station, err error, attempt int) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -141,6 +126,7 @@ func (p *Engine) setState(ctx context.Context, session uint64, state PlayerState
 	return true
 }
 
+// SetVolume clamps volume to 0..1 and applies it to the active playback.
 func (p *Engine) SetVolume(volume float64) {
 	if volume < 0 {
 		volume = 0
@@ -155,12 +141,14 @@ func (p *Engine) SetVolume(volume float64) {
 	p.mu.Unlock()
 }
 
+// Stop cancels playback and waits for the active session to finish closing.
 func (p *Engine) Stop() {
 	p.lifecycle.Lock()
 	defer p.lifecycle.Unlock()
 	p.stopSession()
 }
 
+// stopSession cancels the current session, closes its playback, and waits for its goroutine.
 func (p *Engine) stopSession() {
 	p.mu.Lock()
 	if p.cancel != nil {
@@ -185,6 +173,7 @@ func (p *Engine) stopSession() {
 	}
 }
 
+// Play stops the current session and starts playing station asynchronously.
 func (p *Engine) Play(station Station) {
 	p.lifecycle.Lock()
 	defer p.lifecycle.Unlock()
@@ -205,6 +194,7 @@ func (p *Engine) Play(station Station) {
 	}()
 }
 
+// run opens a stream, then retries failures while reconnect is enabled.
 func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 	attempt := 0
 	for ctx.Err() == nil {
@@ -242,7 +232,7 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 		if !p.setState(ctx, session, StateReconnecting, station, err, attempt) {
 			return
 		}
-		timer := time.NewTimer(RetryDelay(attempt))
+		timer := time.NewTimer(retryDelay(attempt))
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -252,20 +242,20 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 	}
 }
 
+// connect resolves, decodes, and plays one stream attempt until it ends or is canceled.
 func (p *Engine) connect(ctx context.Context, session uint64, station Station) error {
 	streamURL := station.URL
 	if station.ResolvedURL != "" {
 		streamURL = station.ResolvedURL
 	}
-	var info StreamInfo
+	var info codec.StreamInfo
 	stream, info, err := p.streams.Open(ctx, streamURL, func(raw string) {
-		p.mu.Lock()
-		if p.session != session || ctx.Err() != nil {
-			p.mu.Unlock()
+		metadata := icy.ParseTrackMetadata(raw)
+		if metadata.RawTitle == "" {
 			return
 		}
-		metadata := p.parseMetadataLocked(station, raw)
-		if metadata.RawTitle == "" {
+		p.mu.Lock()
+		if p.session != session || ctx.Err() != nil {
 			p.mu.Unlock()
 			return
 		}
@@ -315,12 +305,6 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 		return ctx.Err()
 	}
 	p.active = playback
-	p.mu.Unlock()
-	p.mu.Lock()
-	if p.session != session || ctx.Err() != nil {
-		p.mu.Unlock()
-		return ctx.Err()
-	}
 	p.state = StatePlaying
 	p.emit(Event{State: StatePlaying, Station: station, StreamInfo: info})
 	p.mu.Unlock()
@@ -342,6 +326,7 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	}
 }
 
+// clearPlayback removes playback from the engine if it is still the active instance.
 func (p *Engine) clearPlayback(playback audio.Playback) {
 	p.mu.Lock()
 	if p.active == playback {
@@ -350,6 +335,7 @@ func (p *Engine) clearPlayback(playback audio.Playback) {
 	p.mu.Unlock()
 }
 
+// Close stops playback and closes idle connections owned by the stream opener.
 func (p *Engine) Close() error {
 	p.lifecycle.Lock()
 	defer p.lifecycle.Unlock()

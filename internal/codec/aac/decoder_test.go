@@ -9,7 +9,7 @@ import (
 	"github.com/colespringer/waxflow/audio"
 	"github.com/colespringer/waxflow/codec"
 	waxaac "github.com/colespringer/waxflow/codec/aac"
-	"go.lucor.dev/fynetune/internal/metadata/icy"
+	"go.lucor.dev/fynetune/internal/icy"
 	"go.lucor.dev/fynetune/internal/retry"
 )
 

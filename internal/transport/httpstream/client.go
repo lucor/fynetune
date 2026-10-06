@@ -14,8 +14,7 @@ import (
 	"strings"
 
 	"go.lucor.dev/fynetune/internal/codec"
-	"go.lucor.dev/fynetune/internal/media"
-	"go.lucor.dev/fynetune/internal/metadata/icy"
+	"go.lucor.dev/fynetune/internal/icy"
 	"go.lucor.dev/fynetune/internal/playlist"
 	"go.lucor.dev/fynetune/internal/retry"
 	hlsstream "go.lucor.dev/fynetune/internal/transport/hls"
@@ -41,23 +40,23 @@ func New(client *http.Client) *Client {
 	return &Client{client: client, hls: hlsstream.New(client)}
 }
 
-func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 	return c.open(ctx, url, onMetadata, 0)
 }
 
-func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
 	req.Header.Set("User-Agent", version.UserAgent())
 	req.Header.Set("Icy-MetaData", "1")
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
 	if err := c.checkStatus(resp); err != nil {
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	resolvedURL := rawURL
@@ -74,7 +73,7 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 	}
 	if err := ctx.Err(); err != nil {
 		closeResponseBody(resp.Body)
-		return nil, media.StreamInfo{}, err
+		return nil, codec.StreamInfo{}, err
 	}
 	if kind == playlist.KindNotPlaylist {
 		return openStream(body, resp.Body, resp.Header, contentType, resolvedURL, onMetadata)
@@ -83,11 +82,11 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 }
 
 // openStream wraps a response body with ICY metadata filtering and stream information.
-func openStream(reader io.Reader, closer io.Closer, header http.Header, contentType, rawURL string, onMetadata func(string)) (io.ReadCloser, media.StreamInfo, error) {
+func openStream(reader io.Reader, closer io.Closer, header http.Header, contentType, rawURL string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
 	interval, err := metadataInterval(header)
 	if err != nil {
 		closeResponseBody(closer)
-		return nil, media.StreamInfo{}, retry.NoRetry(err)
+		return nil, codec.StreamInfo{}, retry.NoRetry(err)
 	}
 	onTitle := func(raw string) {
 		if onMetadata != nil {
@@ -95,17 +94,17 @@ func openStream(reader io.Reader, closer io.Closer, header http.Header, contentT
 		}
 	}
 	stream := &streamReader{Reader: icy.NewReader(reader, interval, onTitle), closer: closer}
-	return stream, media.StreamInfo{URL: rawURL, Codec: codec.NameFromMIMEType(contentType), MIMEType: contentType}, nil
+	return stream, codec.StreamInfo{URL: rawURL, Codec: codec.NameFromMIMEType(contentType), MIMEType: contentType}, nil
 }
 
-func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	if kind == playlist.KindUnsupported {
 		closeResponseBody(responseBody)
-		return nil, media.StreamInfo{}, retry.NoRetry(fmt.Errorf("%w: %w (content type %q, URL %q)", ErrUnsupportedStreamFormat, ErrPlaylistUnsupported, contentType, rawURL))
+		return nil, codec.StreamInfo{}, retry.NoRetry(fmt.Errorf("%w: %w (content type %q, URL %q)", ErrUnsupportedStreamFormat, ErrPlaylistUnsupported, contentType, rawURL))
 	}
 	if playlistDepth >= maxPlaylistDepth {
 		closeResponseBody(responseBody)
-		return nil, media.StreamInfo{}, retry.NoRetry(ErrPlaylistDepth)
+		return nil, codec.StreamInfo{}, retry.NoRetry(ErrPlaylistDepth)
 	}
 
 	parsed, err := playlist.Parse(body, kind)
@@ -114,15 +113,15 @@ func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadC
 		if errors.Is(err, playlist.ErrUnsupportedHLS) {
 			return c.hls.Open(ctx, rawURL)
 		}
-		return nil, media.StreamInfo{}, classifyPlaylistError(err)
+		return nil, codec.StreamInfo{}, classifyPlaylistError(err)
 	}
 	return c.resolvePlaylist(ctx, rawURL, parsed.Entries, onMetadata, playlistDepth)
 }
 
 // resolvePlaylist tries each valid stream URL until one opens or all entries fail.
-func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(string), playlistDepth int) (io.ReadCloser, media.StreamInfo, error) {
+func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	if len(entries) == 0 {
-		return nil, media.StreamInfo{}, retry.NoRetry(playlist.ErrNoValidEntries)
+		return nil, codec.StreamInfo{}, retry.NoRetry(playlist.ErrNoValidEntries)
 	}
 	// rawURL comes from a request URL that was already parsed and validated.
 	base, _ := url.Parse(rawURL)
@@ -141,7 +140,7 @@ func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []p
 		}
 		lastErr = err
 		if ctx.Err() != nil {
-			return nil, media.StreamInfo{}, ctx.Err()
+			return nil, codec.StreamInfo{}, ctx.Err()
 		}
 	}
 	if lastErr == nil {
@@ -149,9 +148,9 @@ func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []p
 	}
 	resolveErr := fmt.Errorf("resolve playlist %q: %w", rawURL, lastErr)
 	if errors.Is(lastErr, playlist.ErrNoValidEntries) || !retry.ShouldRetry(lastErr) {
-		return nil, media.StreamInfo{}, retry.NoRetry(resolveErr)
+		return nil, codec.StreamInfo{}, retry.NoRetry(resolveErr)
 	}
-	return nil, media.StreamInfo{}, resolveErr
+	return nil, codec.StreamInfo{}, resolveErr
 }
 
 // checkStatus closes unsuccessful responses and marks non-retryable statuses.

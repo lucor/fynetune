@@ -7,7 +7,7 @@ func TestNameFromMIMEType(t *testing.T) {
 	tests := []struct {
 		name        string
 		contentType string
-		want        string
+		want        CodecName
 	}{
 		{name: "missing type defaults to MP3", want: NameMP3},
 		{name: "malformed type defaults to MP3", contentType: "not a mime type", want: NameMP3},
