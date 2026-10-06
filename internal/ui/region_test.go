@@ -11,7 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"go.lucor.dev/fynetune/internal/directory/radiobrowser"
+	"go.lucor.dev/fynetune/internal/radiobrowser"
 )
 
 func TestRegionOptionsPreselectsLocaleCountryWithoutSuggestionLabel(t *testing.T) {

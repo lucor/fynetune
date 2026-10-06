@@ -10,6 +10,7 @@ import (
 	"go.lucor.dev/fynetune/internal/version"
 )
 
+// TestSearchBuildsQueryAndMapsStations checks request filters and station normalization.
 func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/stations/search" {
@@ -49,6 +50,7 @@ func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 	}
 }
 
+// TestCountriesReturnsNamesAndCodes checks country names and codes are returned.
 func TestCountriesReturnsNamesAndCodes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/countries" {
@@ -67,6 +69,7 @@ func TestCountriesReturnsNamesAndCodes(t *testing.T) {
 	}
 }
 
+// TestSearchSupportsCountryCode checks filtering by ISO country code.
 func TestSearchSupportsCountryCode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("countrycode"); got != "IT" {
@@ -80,6 +83,7 @@ func TestSearchSupportsCountryCode(t *testing.T) {
 	}
 }
 
+// TestPopularUsesTopClickEndpoint checks popular stations use the top-click endpoint.
 func TestPopularUsesTopClickEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/json/stations/topclick" || r.URL.Query().Get("limit") != "5" {
@@ -93,6 +97,7 @@ func TestPopularUsesTopClickEndpoint(t *testing.T) {
 	}
 }
 
+// TestHTTPErrorIsReported checks unsuccessful API statuses are surfaced to callers.
 func TestHTTPErrorIsReported(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "denied", http.StatusForbidden)

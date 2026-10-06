@@ -17,36 +17,47 @@ import (
 	"go.lucor.dev/fynetune/internal/version"
 )
 
+// ErrHTTPStatus indicates that Radio Browser returned an unsuccessful status.
 var ErrHTTPStatus = errors.New("radio browser returned unsuccessful HTTP status")
 
+// maxResponseBytes bounds Radio Browser JSON responses before decoding.
+const maxResponseBytes = 256 << 10
+
+// defaultBaseURL is the Radio Browser API endpoint used by New.
 const defaultBaseURL = "https://all.api.radio-browser.info"
 
+// Query contains the filters and result limit for a station search.
 type Query struct {
-	Name         string
-	Country      string
-	CountryCode  string
-	CountryExact bool
-	Tag          string
-	Codec        string
-	Limit        int
+	Name         string // Station name filter.
+	Country      string // Country name filter.
+	CountryCode  string // ISO 3166-1 alpha-2 country code filter.
+	CountryExact bool   // Match Country exactly instead of searching within it.
+	Tag          string // Tag filter.
+	Codec        string // Audio codec filter.
+	Limit        int    // Maximum results; values outside 1..100 use the default.
 }
 
+// Country is a country name and ISO 3166-1 alpha-2 code from Radio Browser.
 type Country struct {
 	Name string `json:"name"`
 	Code string `json:"iso_3166_1"`
 }
 
+// Directory provides station search, popularity, and country data to the UI.
 type Directory interface {
 	Search(context.Context, Query) ([]radio.Station, error)
 	Popular(context.Context, int) ([]radio.Station, error)
 	Countries(context.Context) ([]Country, error)
 }
 
+// Client queries the Radio Browser station directory.
 type Client struct {
 	baseURL string
 	http    *http.Client
 }
 
+// New creates a Radio Browser client using the default API endpoint.
+// A nil HTTP client is replaced with one that has a 15-second timeout.
 func New(client *http.Client) *Client {
 	if client == nil {
 		client = &http.Client{Timeout: 15 * time.Second}
@@ -54,23 +65,36 @@ func New(client *http.Client) *Client {
 	return &Client{baseURL: defaultBaseURL, http: client}
 }
 
-// NewWithBaseURL is intended for controlled deployments and tests.
+// NewWithBaseURL creates a client pointed at a custom API endpoint.
+// It is useful for controlled deployments and tests.
 func NewWithBaseURL(baseURL string, client *http.Client) *Client {
 	c := New(client)
 	c.baseURL = strings.TrimRight(baseURL, "/")
 	return c
 }
 
+// Search finds stations matching the supplied filters and maps valid results to radio stations.
 func (c *Client) Search(ctx context.Context, query Query) ([]radio.Station, error) {
 	values := url.Values{}
-	set(values, "name", query.Name)
-	set(values, "country", query.Country)
-	set(values, "countrycode", query.CountryCode)
-	if query.CountryExact && strings.TrimSpace(query.Country) != "" {
+	if name := strings.TrimSpace(query.Name); name != "" {
+		values.Set("name", name)
+	}
+	country := strings.TrimSpace(query.Country)
+	if country != "" {
+		values.Set("country", country)
+	}
+	if countryCode := strings.TrimSpace(query.CountryCode); countryCode != "" {
+		values.Set("countrycode", countryCode)
+	}
+	if query.CountryExact && country != "" {
 		values.Set("countryExact", "true")
 	}
-	set(values, "tag", query.Tag)
-	set(values, "codec", query.Codec)
+	if tag := strings.TrimSpace(query.Tag); tag != "" {
+		values.Set("tag", tag)
+	}
+	if codec := strings.TrimSpace(query.Codec); codec != "" {
+		values.Set("codec", codec)
+	}
 	values.Set("hidebroken", "true")
 	values.Set("order", "clickcount")
 	values.Set("reverse", "true")
@@ -78,12 +102,14 @@ func (c *Client) Search(ctx context.Context, query Query) ([]radio.Station, erro
 	return c.fetch(ctx, "/json/stations/search", values)
 }
 
+// Popular returns the most-clicked stations up to the requested limit.
 func (c *Client) Popular(ctx context.Context, limit int) ([]radio.Station, error) {
 	values := url.Values{"hidebroken": {"true"}}
 	setLimit(values, limit)
 	return c.fetch(ctx, "/json/stations/topclick", values)
 }
 
+// Countries returns countries with non-empty names and normalized country codes.
 func (c *Client) Countries(ctx context.Context) ([]Country, error) {
 	var records []Country
 	if err := c.getJSON(ctx, "/json/countries", nil, &records); err != nil {
@@ -100,6 +126,7 @@ func (c *Client) Countries(ctx context.Context) ([]Country, error) {
 	return countries, nil
 }
 
+// fetch decodes station records and omits entries missing required station fields.
 func (c *Client) fetch(ctx context.Context, path string, query url.Values) ([]radio.Station, error) {
 	var records []stationRecord
 	if err := c.getJSON(ctx, path, query, &records); err != nil {
@@ -115,6 +142,7 @@ func (c *Client) fetch(ctx context.Context, path string, query url.Values) ([]ra
 	return stations, nil
 }
 
+// getJSON fetches one API endpoint and decodes its bounded JSON response.
 func (c *Client) getJSON(ctx context.Context, path string, query url.Values, target any) error {
 	endpoint := c.baseURL + path
 	if encoded := query.Encode(); encoded != "" {
@@ -135,19 +163,21 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("%w: %d", ErrHTTPStatus, resp.StatusCode)
 	}
-	decoder := json.NewDecoder(io.LimitReader(resp.Body, 8<<20))
-	if err := decoder.Decode(target); err != nil {
+	// Read one byte beyond the limit so oversized responses are rejected, not truncated.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("read radio browser response: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return fmt.Errorf("radio browser response exceeds %d-byte limit", maxResponseBytes)
+	}
+	if err := json.Unmarshal(body, target); err != nil {
 		return fmt.Errorf("decode radio browser response: %w", err)
 	}
 	return nil
 }
 
-func set(values url.Values, key, value string) {
-	if value = strings.TrimSpace(value); value != "" {
-		values.Set(key, value)
-	}
-}
-
+// setLimit applies the API's supported result range and default limit.
 func setLimit(values url.Values, limit int) {
 	if limit <= 0 || limit > 100 {
 		limit = 30
@@ -155,6 +185,7 @@ func setLimit(values url.Values, limit int) {
 	values.Set("limit", strconv.Itoa(limit))
 }
 
+// stationRecord mirrors the fields consumed from a Radio Browser station response.
 type stationRecord struct {
 	UUID        string `json:"stationuuid"`
 	Name        string `json:"name"`
@@ -169,6 +200,7 @@ type stationRecord struct {
 	Tags        string `json:"tags"`
 }
 
+// station converts the API record into the app's normalized station model.
 func (s stationRecord) station() radio.Station {
 	var tags []string
 	for _, tag := range strings.Split(s.Tags, ",") {
