@@ -1,12 +1,12 @@
 package mp3
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/colespringer/waxflow/audio"
 	waxmp3 "github.com/colespringer/waxflow/codec/mp3"
+	"go.lucor.dev/fynetune/internal/codec/pcm16"
 	"go.lucor.dev/fynetune/internal/retry"
 )
 
@@ -27,6 +27,7 @@ func NewDecoder(reader io.Reader) (*Decoder, error) {
 	return &Decoder{frames: frames, decoder: decoded, format: header.PCMFormat(), pending: frame}, nil
 }
 
+// Decoder converts MP3 frames into interleaved signed 16-bit PCM.
 type Decoder struct {
 	frames  *Framer
 	decoder *waxmp3.Decoder
@@ -37,6 +38,7 @@ type Decoder struct {
 	err     error
 }
 
+// Read decodes MP3 frames and returns their PCM bytes.
 func (d *Decoder) Read(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -63,25 +65,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 		d.pcm = d.pcm[:0]
 		d.offset = 0
 		err := d.decoder.Decode(frame, func(b *audio.Buffer) error {
-			size := b.N * b.Fmt.Channels * 2
-			if cap(d.pcm) < size {
-				d.pcm = make([]byte, size)
-			} else {
-				d.pcm = d.pcm[:size]
-			}
-			for i := 0; i < b.N; i++ {
-				for c := 0; c < b.Fmt.Channels; c++ {
-					v := b.ChanF(c)[i]
-					if v > 1 {
-						v = 1
-					}
-					if v < -1 {
-						v = -1
-					}
-					sample := int16(v * 32767)
-					binary.LittleEndian.PutUint16(d.pcm[(i*b.Fmt.Channels+c)*2:], uint16(sample))
-				}
-			}
+			d.pcm = pcm16.AppendS16LE(d.pcm, b)
 			return nil
 		})
 		if err != nil {
@@ -92,8 +76,14 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	d.offset += n
 	return n, nil
 }
+
+// SampleRate returns the decoded PCM sample rate in hertz.
 func (d *Decoder) SampleRate() int { return d.format.Rate }
-func (d *Decoder) Channels() int   { return d.format.Channels }
+
+// Channels returns the number of channels in the decoded PCM.
+func (d *Decoder) Channels() int { return d.format.Channels }
+
+// Close releases the underlying WaxFlow decoder.
 func (d *Decoder) Close() error {
 	if d.decoder != nil {
 		d.decoder.Release()

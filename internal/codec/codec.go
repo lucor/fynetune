@@ -25,13 +25,19 @@ const (
 )
 
 var (
-	ErrNilRegistry              = errors.New("codec registry is nil")
-	ErrEmptyCodecName           = errors.New("codec name is required")
-	ErrNilDecoderConstructor    = errors.New("decoder constructor is required")
+	// ErrNilRegistry indicates a method was called on a nil registry.
+	ErrNilRegistry = errors.New("codec registry is nil")
+	// ErrEmptyCodecName indicates registration was attempted without a name.
+	ErrEmptyCodecName = errors.New("codec name is required")
+	// ErrNilDecoderConstructor indicates registration was attempted without a constructor.
+	ErrNilDecoderConstructor = errors.New("decoder constructor is required")
+	// ErrDecoderAlreadyRegistered indicates that a codec name is already in use.
 	ErrDecoderAlreadyRegistered = errors.New("decoder is already registered")
-	ErrUnsupportedCodec         = errors.New("unsupported audio codec")
+	// ErrUnsupportedCodec indicates that no decoder is registered for a stream codec.
+	ErrUnsupportedCodec = errors.New("unsupported audio codec")
 )
 
+// Decoder reads decoded PCM and reports its format.
 type Decoder interface {
 	io.Reader
 	SampleRate() int
@@ -56,11 +62,14 @@ func New() *Registry {
 	return registry
 }
 
-// NameFromMIMEType returns the codec name inferred from a stream's media type.
+// NameFromMIMEType maps a stream media type to a decoder name. Missing or
+// malformed types and generic octet-stream types default to MP3 for radio
+// servers that omit a useful content type. Other unknown media types are
+// returned in uppercase so the registry can report them as unsupported.
 func NameFromMIMEType(contentType string) string {
 	mediaType, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return "MP3"
+	if err != nil || mediaType == "" {
+		return NameMP3
 	}
 	mediaType = strings.ToLower(mediaType)
 	switch mediaType {
@@ -72,11 +81,13 @@ func NameFromMIMEType(contentType string) string {
 		return NameOGG
 	case "audio/opus":
 		return NameOPUS
+	case "application/octet-stream", "application/x-octet-stream", "binary/octet-stream":
+		return NameMP3
 	default:
 		if after, ok := strings.CutPrefix(mediaType, "audio/"); ok {
 			return strings.ToUpper(after)
 		}
-		return NameMP3
+		return strings.ToUpper(mediaType)
 	}
 }
 
@@ -128,6 +139,7 @@ func (r *Registry) Decode(reader io.Reader, info media.StreamInfo) (Decoder, err
 	return decoder, nil
 }
 
+// normalize trims surrounding whitespace and uppercases a codec name.
 func normalize(name string) string {
 	return strings.ToUpper(strings.TrimSpace(name))
 }

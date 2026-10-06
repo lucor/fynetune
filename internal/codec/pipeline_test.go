@@ -17,6 +17,7 @@ import (
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
 )
 
+// TestHTTPICYDecoderOutputPipeline checks stream detection, decoding, metadata, and PCM output.
 func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 	for _, tc := range []struct {
 		name, mime string
@@ -73,11 +74,13 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 	}
 }
 
+// captureOutput records the PCM format and first bytes produced by a decoder.
 type captureOutput struct {
 	format appaudio.PCMFormat
 	pcm    []byte
 }
 
+// Play captures the format and a sample of PCM from the decoder.
 func (o *captureOutput) Play(ctx context.Context, source io.Reader, format appaudio.PCMFormat, _ float64) (appaudio.Playback, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -92,13 +95,22 @@ func (o *captureOutput) Play(ctx context.Context, source io.Reader, format appau
 	return &capturePlayback{}, nil
 }
 
+// capturePlayback is an inert playback implementation for pipeline tests.
 type capturePlayback struct{}
 
+// SetVolume implements the playback contract for this inert test playback.
 func (*capturePlayback) SetVolume(float64) {}
-func (*capturePlayback) Err() error        { return nil }
-func (*capturePlayback) IsPlaying() bool   { return true }
-func (*capturePlayback) Close() error      { return nil }
 
+// Err implements the playback contract; the test playback never fails.
+func (*capturePlayback) Err() error { return nil }
+
+// IsPlaying implements the playback contract for this inert test playback.
+func (*capturePlayback) IsPlaying() bool { return true }
+
+// Close implements the playback contract for this inert test playback.
+func (*capturePlayback) Close() error { return nil }
+
+// mp3RadioFixture encodes a short MP3 stream for the HTTP pipeline test.
 func mp3RadioFixture(t *testing.T) []byte {
 	t.Helper()
 	format := waxAudioFormat(44100, 2)
@@ -119,6 +131,7 @@ func mp3RadioFixture(t *testing.T) []byte {
 	return compressed
 }
 
+// aacRadioFixture encodes AAC access units and wraps them in ADTS frames.
 func aacRadioFixture(t *testing.T) []byte {
 	t.Helper()
 	format := waxAudioFormat(48000, 2)
@@ -149,10 +162,12 @@ func aacRadioFixture(t *testing.T) []byte {
 	return compressed
 }
 
+// waxAudioFormat returns the float PCM format used by WaxFlow test encoders.
 func waxAudioFormat(rate, channels int) waxaudio.Format {
 	return waxaudio.Format{Rate: rate, Channels: channels, Layout: waxaudio.DefaultLayout(channels), Type: waxaudio.Float, BitDepth: 32}
 }
 
+// sineInput creates a pooled audio buffer containing a test tone.
 func sineInput(format waxaudio.Format, frames int) *waxaudio.Buffer {
 	buffer := waxaudio.Get(format, frames)
 	buffer.N = frames
@@ -164,6 +179,7 @@ func sineInput(format waxaudio.Format, frames int) *waxaudio.Buffer {
 	return buffer
 }
 
+// interleaveICY inserts ICY metadata blocks at each interval in the audio data.
 func interleaveICY(audio []byte, interval int) []byte {
 	var body []byte
 	for len(audio) > 0 {

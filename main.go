@@ -1,3 +1,4 @@
+// Package main wires the FyneTune desktop application and its runtime dependencies.
 package main
 
 import (
@@ -42,12 +43,17 @@ func main() {
 	metadata.Icon = fyne.NewStaticResource(appIconName, appIconSVG)
 	app.SetMetadata(metadata)
 	version.SetApplicationMetadata(a.Metadata())
+	// Stream requests can remain open during playback, so this client limits only response-header wait time.
 	streamClient := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: streamResponseHeaderTimeout}}
-	radioBrowserClient := &http.Client{Timeout: radioBrowserRequestTimeout}
-	player := radio.NewPlayer(httpstream.New(streamClient), codec.New(), otooutput.New())
-	window := ui.New(a, player, radiobrowser.New(radioBrowserClient))
+	// Radio Browser requests are short API calls, so this client has a total request timeout.
+	radioBrowserHTTPClient := &http.Client{Timeout: radioBrowserRequestTimeout}
+	// The radio engine connects stream transport, codec selection, and audio output.
+	radioPlayer := radio.NewPlayer(httpstream.New(streamClient), codec.New(), otooutput.New())
+	// The Radio Browser client supplies station directories to the Fyne UI.
+	radioBrowserClient := radiobrowser.New(radioBrowserHTTPClient)
+	window := ui.New(a, radioPlayer, radioBrowserClient)
 	window.Run()
 	if err := window.Close(); err != nil {
-		log.Printf("close player: %v", err)
+		log.Printf("close radio player: %v", err)
 	}
 }

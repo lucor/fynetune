@@ -16,23 +16,32 @@ import (
 )
 
 var (
+	// ErrUnsupportedPCMFormat indicates that the output cannot play the requested PCM format.
 	ErrUnsupportedPCMFormat = errors.New("unsupported PCM format")
-	ErrOutputUnavailable    = errors.New("audio output unavailable")
-	ErrInvalidSampleRate    = errors.New("invalid PCM sample rate")
+	// ErrOutputUnavailable indicates that Oto could not initialize or use the audio device.
+	ErrOutputUnavailable = errors.New("audio output unavailable")
+	// ErrInvalidSampleRate indicates that a resampler was given a non-positive sample rate.
+	ErrInvalidSampleRate = errors.New("invalid PCM sample rate")
 )
 
+// outputSampleRate is the shared hardware rate used by the Oto context.
 const outputSampleRate = 44100
+
+// pcmFrameSize is the byte size of one stereo frame of signed 16-bit PCM.
 const pcmFrameSize = 4
 
+// Output initializes Oto once and adapts input PCM to its fixed stereo format.
 type Output struct {
-	once    sync.Once
+	once    sync.Once // Oto context creation is shared by every playback from this output.
 	context *oto.Context
 	ready   chan struct{}
 	err     error
 }
 
+// New creates an output that initializes its Oto context on the first Play call.
 func New() *Output { return &Output{} }
 
+// Play validates and adapts PCM input, then starts an Oto playback session.
 func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFormat, volume float64) (audio.Playback, error) {
 	if format.SampleRate <= 0 || (format.Channels != 1 && format.Channels != 2) || format.BitDepth != 16 {
 		return nil, retry.NoRetry(fmt.Errorf("%w: %d Hz, %d channels, %d-bit", ErrUnsupportedPCMFormat, format.SampleRate, format.Channels, format.BitDepth))
@@ -63,27 +72,34 @@ func (o *Output) Play(ctx context.Context, source io.Reader, format audio.PCMFor
 	if format.SampleRate != outputSampleRate {
 		source = &resampler{source: source, inputRate: format.SampleRate, outputRate: outputSampleRate}
 	}
-	player := o.context.NewPlayer(source)
-	player.SetVolume(volume)
-	player.Play()
-	return &otoPlayback{player: player}, nil
+	otoPlayer := o.context.NewPlayer(source)
+	otoPlayer.SetVolume(volume)
+	otoPlayer.Play()
+	return &otoPlayback{otoPlayer: otoPlayer}, nil
 }
 
+// otoPlayback adapts an Oto player to the application playback contract.
 type otoPlayback struct {
-	player    *oto.Player
+	otoPlayer *oto.Player
 	closeOnce sync.Once
 }
 
-func (p *otoPlayback) SetVolume(value float64) { p.player.SetVolume(value) }
-func (p *otoPlayback) Err() error              { return p.player.Err() }
-func (p *otoPlayback) IsPlaying() bool         { return p.player.IsPlaying() }
+// SetVolume updates the Oto player's volume.
+func (p *otoPlayback) SetVolume(value float64) { p.otoPlayer.SetVolume(value) }
 
-// Close can race between Stop and the session's deferred cleanup.
+// Err returns the Oto player's asynchronous error, if any.
+func (p *otoPlayback) Err() error { return p.otoPlayer.Err() }
+
+// IsPlaying reports whether the Oto player is active.
+func (p *otoPlayback) IsPlaying() bool { return p.otoPlayer.IsPlaying() }
+
+// Close stops the player once, safely coordinating with the session's deferred cleanup.
 func (p *otoPlayback) Close() error {
-	p.closeOnce.Do(p.player.PauseAndStopReading)
+	p.closeOnce.Do(p.otoPlayer.PauseAndStopReading)
 	return nil
 }
 
+// stereoFrame stores one interleaved stereo sample pair.
 type stereoFrame struct{ left, right int16 }
 
 // monoToStereo duplicates each mono sample into Oto's stereo output.
@@ -92,7 +108,9 @@ type monoToStereo struct {
 	sample [2]byte
 }
 
+// Read duplicates each signed 16-bit mono sample into a stereo frame.
 func (r *monoToStereo) Read(dst []byte) (int, error) {
+	// Oto consumes whole stereo frames, so ignore any trailing partial frame space.
 	dst = dst[:len(dst)/pcmFrameSize*pcmFrameSize]
 	if len(dst) == 0 {
 		return 0, nil
@@ -112,7 +130,7 @@ func (r *monoToStereo) Read(dst []byte) (int, error) {
 	return written, nil
 }
 
-// resampler converts signed 16-bit stereo PCM to Oto's shared output rate.
+// resampler linearly interpolates signed 16-bit stereo PCM to Oto's shared output rate.
 type resampler struct {
 	source            io.Reader
 	inputRate         int
@@ -123,7 +141,9 @@ type resampler struct {
 	frameBytes        [pcmFrameSize]byte
 }
 
+// Read resamples complete stereo frames and keeps the output frame-aligned.
 func (r *resampler) Read(dst []byte) (int, error) {
+	// Keep output frame-aligned even when the caller supplies an odd buffer length.
 	dst = dst[:len(dst)/pcmFrameSize*pcmFrameSize]
 	if len(dst) == 0 {
 		return 0, nil
@@ -132,6 +152,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		return 0, retry.NoRetry(ErrInvalidSampleRate)
 	}
 	if !r.initialized {
+		// Interpolation needs samples on both sides of the first output position.
 		left, err := r.readFrame()
 		if err != nil {
 			return 0, err
@@ -143,6 +164,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 		r.left, r.right, r.initialized = left, right, true
 	}
 	written := 0
+	// phase is a fractional position between left and right, scaled by outputRate.
 	for written < len(dst) && !r.done {
 		for channel, a := range [2]int16{r.left.left, r.left.right} {
 			b := r.right.left
@@ -171,6 +193,7 @@ func (r *resampler) Read(dst []byte) (int, error) {
 	return written, nil
 }
 
+// readFrame reads one complete stereo PCM frame from the source.
 func (r *resampler) readFrame() (stereoFrame, error) {
 	// Reuse the frame bytes: a local array escapes through io.Reader on every
 	// sample, allocating tens of thousands of tiny buffers per second.

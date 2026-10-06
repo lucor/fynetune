@@ -54,7 +54,7 @@ const (
 type Window struct {
 	app                                                  fyne.App
 	win                                                  fyne.Window
-	player                                               radio.Player
+	radioPlayer                                          radio.Player
 	directory                                            radiobrowser.Directory
 	store                                                *storage.Store
 	settings                                             storage.Settings
@@ -72,7 +72,7 @@ type Window struct {
 	regionStatus                                         *widget.Label
 	regionContinue                                       *widget.Button
 	countries                                            []radiobrowser.Country
-	navigation, playerBar                                *fyne.Container
+	navigation, playerBarView                            *fyne.Container
 	headerMain, headerPreferences                        *fyne.Container
 	title                                                *widget.Label
 	artist                                               *widget.Label
@@ -83,7 +83,7 @@ type Window struct {
 	volumeMuteButton                                     *widget.Button
 	volumeSlider                                         *widget.Slider
 	volumeLabel                                          *widget.Label
-	expandedPlayer                                       *fyne.Container
+	expandedPlayerView                                   *fyne.Container
 	playerExpanded                                       bool
 	volumeMuted                                          bool
 	volumeBeforeMute                                     float64
@@ -242,10 +242,10 @@ const (
 	stationIconCacheTTL        = 30 * 24 * time.Hour
 )
 
-func New(a fyne.App, player radio.Player, directories ...radiobrowser.Directory) *Window {
+func New(a fyne.App, radioPlayer radio.Player, directories ...radiobrowser.Directory) *Window {
 	a.Settings().SetTheme(brandTheme{Theme: a.Settings().Theme()})
 	w := &Window{
-		app: a, win: a.NewWindow("FyneTune"), player: player, store: storage.New(a),
+		app: a, win: a.NewWindow("FyneTune"), radioPlayer: radioPlayer, store: storage.New(a),
 		done: make(chan struct{}), eventsDone: make(chan struct{}),
 		cacheStore: appcache.New(a.Cache()),
 	}
@@ -282,8 +282,8 @@ func New(a fyne.App, player radio.Player, directories ...radiobrowser.Directory)
 	w.regionSetupNeeded = needsRegionSetup
 	w.countryOptions = []string{"Any country"}
 	w.volumeBeforeMute = settings.Volume
-	w.player.SetVolume(settings.Volume)
-	w.player.SetReconnect(settings.Reconnect)
+	w.radioPlayer.SetVolume(settings.Volume)
+	w.radioPlayer.SetReconnect(settings.Reconnect)
 	w.win.Resize(fyne.NewSize(480, 800))
 	w.build()
 	w.setAboutMenu()
@@ -297,7 +297,7 @@ func New(a fyne.App, player radio.Player, directories ...radiobrowser.Directory)
 	}
 	w.updateNavigation()
 	w.refreshPage()
-	w.updatePlayerBar()
+	w.updatePlayerBarView()
 	w.updateTray()
 	w.loadCountries()
 	if w.page == pageDiscover && !w.regionSetupNeeded {
@@ -357,7 +357,7 @@ func (w *Window) applyVolume() {
 	if w.volumeMuted {
 		volume = 0
 	}
-	w.player.SetVolume(volume)
+	w.radioPlayer.SetVolume(volume)
 	w.updateVolumeControls()
 }
 
@@ -420,13 +420,13 @@ func (w *Window) build() {
 	volumeControl := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(playerControlSize),
 		container.NewThemeOverride(w.volumeMuteButton, playerControlTheme{Theme: w.app.Settings().Theme()})))
 	volumeValue := container.NewCenter(container.NewGridWrap(fyne.NewSize(playerVolumeValueWidth, playerControlSize), w.volumeLabel))
-	w.expandedPlayer = container.NewBorder(
+	w.expandedPlayerView = container.NewBorder(
 		nil, nil,
 		volumeControl,
 		volumeValue,
 		w.volumeSlider,
 	)
-	w.expandedPlayer.Hide()
+	w.expandedPlayerView.Hide()
 	stationTitle := container.NewThemeOverride(w.title, stationRowTextTheme{Theme: w.app.Settings().Theme()})
 	track := container.NewThemeOverride(w.artist, playerTrackTheme{Theme: w.app.Settings().Theme()})
 	playerText := container.New(layout.NewCustomPaddedVBoxLayout(playerTextGap), stationTitle, track)
@@ -436,24 +436,24 @@ func (w *Window) build() {
 	artwork := container.New(layout.NewCustomPaddedHBoxLayout(0), container.NewCenter(w.playerArtwork), artworkGap)
 	barContent := container.NewBorder(nil, nil, artwork, nil, centeredText)
 	barTap := newStationTapArea(barContent, w.toggleExpandedPlayer, nil)
-	playerBar := container.NewVBox(
+	playerBarView := container.NewVBox(
 		widget.NewSeparator(),
 		container.NewBorder(nil, nil, nil, playControl, barTap),
-		w.expandedPlayer,
+		w.expandedPlayerView,
 	)
-	w.playerBar = playerBar
+	w.playerBarView = playerBarView
 	w.navDiscover = newNavItem("Discover", theme.HomeIcon(), nil, func() { w.showPage(pageDiscover) })
 	w.navFavorites = newNavItem("Favorites", favoriteOutlineResource, favoriteRowFilled, func() { w.showPage(pageFavorites) })
 	w.navRecent = newNavItem("Recent", theme.HistoryIcon(), nil, func() { w.showPage(pageRecent) })
 	nav := container.NewGridWithColumns(3, w.navDiscover, w.navFavorites, w.navRecent)
 	w.navigation = nav
 	footer := container.NewVBox(
-		container.NewPadded(playerBar),
+		container.NewPadded(playerBarView),
 		widget.NewSeparator(),
 		container.NewPadded(nav),
 	)
 	if w.regionSetupNeeded {
-		w.playerBar.Hide()
+		w.playerBarView.Hide()
 		w.navigation.Hide()
 	}
 	w.win.SetContent(container.NewBorder(container.NewPadded(header), footer, nil, nil, w.body))
@@ -794,8 +794,8 @@ func (w *Window) completeRegionSetup() {
 	if w.navigation != nil {
 		w.navigation.Show()
 	}
-	if w.playerBar != nil {
-		w.playerBar.Show()
+	if w.playerBarView != nil {
+		w.playerBarView.Show()
 	}
 	w.refreshPage()
 	w.loadPopular()
@@ -1100,7 +1100,7 @@ func (w *Window) stationIsActive(id string) bool {
 	if id == "" || id != w.selected.ID {
 		return false
 	}
-	switch w.player.State() {
+	switch w.radioPlayer.State() {
 	case radio.StateConnecting, radio.StateBuffering, radio.StatePlaying, radio.StateReconnecting:
 		return true
 	default:
@@ -1886,14 +1886,14 @@ func (w *Window) playStation(station radio.Station) {
 		slog.Warn("could not save recent stations", "error", err)
 	}
 	_ = w.store.SaveSettings(w.settings)
-	w.updatePlayerBar()
+	w.updatePlayerBarView()
 	w.artist.SetText("Connecting…")
 	w.setPlayControls(theme.MediaStopIcon())
 	if w.page == pageRecent {
 		w.refreshPage()
 	}
 	w.updateTray()
-	w.player.Play(station)
+	w.radioPlayer.Play(station)
 }
 
 func (w *Window) withoutRecent(id string) []recentStation {
@@ -1906,7 +1906,7 @@ func (w *Window) withoutRecent(id string) []recentStation {
 	return result
 }
 
-func (w *Window) updatePlayerBar() {
+func (w *Window) updatePlayerBarView() {
 	if w.playerArt != nil && w.playerArtID != w.selected.ID {
 		station := w.selected
 		w.playerArtID = station.ID
@@ -1920,7 +1920,7 @@ func (w *Window) updatePlayerBar() {
 		return
 	}
 	w.title.SetText(w.selected.Name)
-	if w.player.State() == radio.StateStopped {
+	if w.radioPlayer.State() == radio.StateStopped {
 		w.artist.SetText("Not playing")
 	}
 	w.updateVolumeControls()
@@ -1929,11 +1929,11 @@ func (w *Window) updatePlayerBar() {
 func (w *Window) toggleExpandedPlayer() {
 	w.playerExpanded = !w.playerExpanded
 	if w.playerExpanded {
-		w.expandedPlayer.Show()
+		w.expandedPlayerView.Show()
 	} else {
-		w.expandedPlayer.Hide()
+		w.expandedPlayerView.Hide()
 	}
-	w.expandedPlayer.Refresh()
+	w.expandedPlayerView.Refresh()
 	w.win.Content().Refresh()
 }
 
@@ -1954,7 +1954,7 @@ func (w *Window) updateTray() {
 		current = w.artist.Text
 	}
 	playLabel := "Play"
-	if state := w.player.State(); state != radio.StateStopped && state != radio.StateError {
+	if state := w.radioPlayer.State(); state != radio.StateStopped && state != radio.StateError {
 		playLabel = "Stop"
 	}
 	if w.trayMenu == nil {
@@ -1977,12 +1977,12 @@ func (w *Window) updateTray() {
 }
 
 func (w *Window) togglePlay() {
-	if w.player.State() == radio.StateStopped || w.player.State() == radio.StateError {
+	if w.radioPlayer.State() == radio.StateStopped || w.radioPlayer.State() == radio.StateError {
 		if w.selected.ID != "" {
 			w.playStation(w.selected)
 		}
 	} else {
-		w.player.Stop()
+		w.radioPlayer.Stop()
 	}
 }
 
@@ -1991,7 +1991,7 @@ func (w *Window) events() {
 		select {
 		case <-w.done:
 			return
-		case e, ok := <-w.player.Events():
+		case e, ok := <-w.radioPlayer.Events():
 			if !ok {
 				return
 			}
@@ -2004,7 +2004,7 @@ func (w *Window) events() {
 				case radio.StateStopped:
 					w.artist.SetText("Not playing")
 					w.setPlayControls(theme.MediaPlayIcon())
-					w.updatePlayerBar()
+					w.updatePlayerBarView()
 					w.updateTray()
 				case radio.StateConnecting:
 					w.title.SetText(ev.Station.Name)
@@ -2084,7 +2084,7 @@ func (w *Window) stationDialog(old *radio.Station) {
 			}
 			if w.selected.ID == s.ID {
 				w.selected = s
-				w.updatePlayerBar()
+				w.updatePlayerBarView()
 				w.updateTray()
 			}
 		} else {
@@ -2112,7 +2112,7 @@ func (w *Window) stationMenu(s radio.Station) {
 				return
 			}
 			if w.selected.ID == s.ID {
-				w.player.Stop()
+				w.radioPlayer.Stop()
 				w.selected = radio.Station{}
 				w.settings.Selected = ""
 			}
@@ -2126,7 +2126,7 @@ func (w *Window) stationMenu(s radio.Station) {
 			_ = w.store.SaveStations(rows)
 			_ = w.store.SaveSettings(w.settings)
 			w.refreshPage()
-			w.updatePlayerBar()
+			w.updatePlayerBarView()
 		}, w.win)
 	})
 	d := dialog.NewCustom(s.Name, "Close", container.NewVBox(play, edit, remove), w.win)
@@ -2140,7 +2140,7 @@ func (w *Window) preferencesPage() *fyne.Container {
 	})
 	rec := preferenceCheckRow("Reconnect automatically", w.settings.Reconnect, func(v bool) {
 		w.settings.Reconnect = v
-		w.player.SetReconnect(v)
+		w.radioPlayer.SetReconnect(v)
 		_ = w.store.SaveSettings(w.settings)
 	})
 	min := preferenceCheckRow("Start minimized", w.settings.StartMinimized, func(v bool) {
@@ -2228,7 +2228,7 @@ func (w *Window) Close() error {
 			w.searchTimer.Stop()
 		}
 		close(w.done)
-		w.closeErr = w.player.Close()
+		w.closeErr = w.radioPlayer.Close()
 		<-w.eventsDone
 	})
 	return w.closeErr

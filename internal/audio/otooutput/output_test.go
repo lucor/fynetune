@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestResamplerChangesSampleRate checks interpolation at a higher output rate.
 func TestResamplerChangesSampleRate(t *testing.T) {
 	var source bytes.Buffer
 	for _, sample := range []stereoFrame{{left: 0, right: 0}, {left: 1000, right: -1000}} {
@@ -37,6 +38,7 @@ func TestResamplerChangesSampleRate(t *testing.T) {
 	}
 }
 
+// TestMonoToStereoDuplicatesSamples checks mono samples are copied to both channels.
 func TestMonoToStereoDuplicatesSamples(t *testing.T) {
 	var source bytes.Buffer
 	for _, value := range []int16{-1200, 3400} {
@@ -61,6 +63,7 @@ func TestMonoToStereoDuplicatesSamples(t *testing.T) {
 	}
 }
 
+// TestPCMConversionReusesBuffers checks steady-state conversion performs no allocations.
 func TestPCMConversionReusesBuffers(t *testing.T) {
 	pcm := make([]byte, 8192)
 	out := make([]byte, 4096)

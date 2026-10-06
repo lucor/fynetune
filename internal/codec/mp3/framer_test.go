@@ -12,12 +12,14 @@ import (
 	"go.lucor.dev/fynetune/internal/metadata/icy"
 )
 
+// testMP3Frame returns a minimal MPEG-1 Layer III frame fixture.
 func testMP3Frame() []byte {
 	frame := make([]byte, 417)
 	copy(frame, []byte{0xff, 0xfb, 0x90, 0x64}) // MPEG-1 Layer III, 128 kbit/s, 44.1 kHz.
 	return frame
 }
 
+// TestFramerResyncsAndReadsShortChunks checks sync recovery across partial reads.
 func TestFramerResyncsAndReadsShortChunks(t *testing.T) {
 	wire := append([]byte{0x00, 0xff, 0x00}, testMP3Frame()...)
 	wire = append(wire, testMP3Frame()...)
@@ -41,6 +43,7 @@ type shortReader struct {
 	max    int
 }
 
+// Read limits each read to exercise framing across short input chunks.
 func (r *shortReader) Read(p []byte) (int, error) {
 	if len(p) > r.max {
 		p = p[:r.max]
@@ -48,6 +51,7 @@ func (r *shortReader) Read(p []byte) (int, error) {
 	return r.reader.Read(p)
 }
 
+// TestDecoderProducesPCMThroughWaxFlow checks that WaxFlow decoding yields PCM.
 func TestDecoderProducesPCMThroughWaxFlow(t *testing.T) {
 	format := audio.Format{Rate: 44100, Channels: 2, Layout: audio.DefaultLayout(2), Type: audio.Float, BitDepth: 32}
 	encoder, err := waxmp3.NewEncoder(format, &waxmp3.EncoderOptions{Bitrate: 128000})
@@ -97,6 +101,7 @@ func TestDecoderProducesPCMThroughWaxFlow(t *testing.T) {
 	}
 }
 
+// icyWrap inserts ICY metadata blocks at the requested audio interval.
 func icyWrap(audio []byte, interval int) []byte {
 	var out []byte
 	for len(audio) > 0 {

@@ -1,3 +1,4 @@
+// Package mp3 frames and decodes MPEG Layer III audio streams.
 package mp3
 
 import (
@@ -7,15 +8,18 @@ import (
 	waxmp3 "github.com/colespringer/waxflow/codec/mp3"
 )
 
-// Framer finds complete Layer III frames in a possibly misaligned reader.
+// maxFrameSize bounds accepted MP3 frame lengths while searching for sync.
 const maxFrameSize = 8 << 10
 
+// Framer finds complete Layer III frames in a possibly misaligned or chunked reader.
 type Framer struct{ r *bufio.Reader }
 
+// NewFramer creates a framer with buffering for one maximum-size frame and lookahead.
 func NewFramer(r io.Reader) *Framer {
 	return &Framer{r: bufio.NewReaderSize(r, maxFrameSize+waxmp3.HeaderLen)}
 }
 
+// ReadFrame finds and returns the next complete Layer III frame and its header.
 func (f *Framer) ReadFrame() ([]byte, waxmp3.Header, error) {
 	for {
 		candidate, err := f.r.Peek(waxmp3.HeaderLen)

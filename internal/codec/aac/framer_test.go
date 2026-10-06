@@ -6,12 +6,14 @@ import (
 	"testing"
 )
 
+// testADTSFrame builds a minimal ADTS frame for the requested sampling index and channel config.
 func testADTSFrame(payload []byte, rateIndex, channels int) []byte {
 	length := 7 + len(payload)
 	b := []byte{0xff, 0xf1, 0x40 | byte(rateIndex<<2) | byte(channels>>2), byte((channels&3)<<6) | byte(length>>11)&3, byte(length >> 3), byte(length<<5) | 0x1f, 0xfc}
 	return append(b, payload...)
 }
 
+// TestFramerResyncsPartialReadsAndStripsHeader checks resynchronization and access-unit extraction.
 func TestFramerResyncsPartialReadsAndStripsHeader(t *testing.T) {
 	first := testADTSFrame([]byte{1, 2, 3, 4}, 3, 2)
 	second := testADTSFrame([]byte{5, 6}, 3, 2)
@@ -32,6 +34,7 @@ func TestFramerResyncsPartialReadsAndStripsHeader(t *testing.T) {
 	}
 }
 
+// TestFramerReadsCRCHeader checks support for ADTS headers with a CRC field.
 func TestFramerReadsCRCHeader(t *testing.T) {
 	frame := testADTSFrame([]byte{0x42, 0x43}, 4, 1)
 	frame[1] &^= 1
@@ -51,6 +54,7 @@ func TestFramerReadsCRCHeader(t *testing.T) {
 
 type aacShortReader struct{ reader io.Reader }
 
+// Read limits each read to exercise framing across short input chunks.
 func (r *aacShortReader) Read(p []byte) (int, error) {
 	if len(p) > 2 {
 		p = p[:2]

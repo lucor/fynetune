@@ -13,6 +13,7 @@ import (
 	"go.lucor.dev/fynetune/internal/retry"
 )
 
+// TestDecoderWaxFlowAACProfiles checks decoding of AAC-LC, HE-AAC, and HE-AACv2.
 func TestDecoderWaxFlowAACProfiles(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
@@ -52,6 +53,7 @@ func TestDecoderWaxFlowAACProfiles(t *testing.T) {
 	}
 }
 
+// TestUnsupportedADTSProfileIsNoRetry checks unsupported ADTS profiles are not retried.
 func TestUnsupportedADTSProfileIsNoRetry(t *testing.T) {
 	first := testADTSFrame([]byte{0x00}, 3, 2)
 	first[2] &^= 0xc0 // Main profile instead of the supported AAC-LC core.
@@ -62,6 +64,7 @@ func TestUnsupportedADTSProfileIsNoRetry(t *testing.T) {
 	}
 }
 
+// wrapICY inserts a metadata block at each interval to build an ICY-framed fixture.
 func wrapICY(audio []byte, interval int) []byte {
 	var out []byte
 	for len(audio) > 0 {
@@ -81,6 +84,7 @@ func wrapICY(audio []byte, interval int) []byte {
 	return out
 }
 
+// encodeADTS encodes a WaxFlow fixture and wraps its access units in ADTS headers.
 func encodeADTS(t *testing.T, profile string, ps bool) []byte {
 	t.Helper()
 	outFormat := audio.Format{Rate: 48000, Channels: 2, Layout: audio.DefaultLayout(2), Type: audio.Float, BitDepth: 32}
