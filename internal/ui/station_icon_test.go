@@ -37,18 +37,10 @@ func TestDecodeStationIcon(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded, err = decodeStationIcon(encoded.Bytes())
-	if err != nil || decoded.image.Bounds().Dx() != 64 || decoded.image.Bounds().Dy() != 53 {
-		t.Fatalf("expected large station image to be resized for caching, got %#v (error: %v)", decoded.image, err)
+	if err != nil || decoded.image.Bounds().Dx() != 256 || decoded.image.Bounds().Dy() != 214 {
+		t.Fatalf("expected large station image to be resized for high-density displays, got %#v (error: %v)", decoded.image, err)
 	}
 
-	tooLarge := image.NewRGBA(image.Rect(0, 0, maxStationIconDimension+1, 1))
-	encoded.Reset()
-	if err := png.Encode(&encoded, tooLarge); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := decodeStationIcon(encoded.Bytes()); err == nil {
-		t.Fatal("unreasonably large image dimensions should be rejected with a reason")
-	}
 }
 
 func TestDecodeStationIconSVG(t *testing.T) {
@@ -71,10 +63,10 @@ func TestResizeStationIcon(t *testing.T) {
 		want          image.Point
 	}{
 		{"small", 32, 32, image.Pt(32, 32)},
-		{"square", 1024, 1024, image.Pt(64, 64)},
-		{"landscape", 1024, 512, image.Pt(64, 32)},
-		{"portrait", 512, 1024, image.Pt(32, 64)},
-		{"narrow", 1, 4096, image.Pt(1, 64)},
+		{"square", 1024, 1024, image.Pt(256, 256)},
+		{"landscape", 1024, 512, image.Pt(256, 128)},
+		{"portrait", 512, 1024, image.Pt(128, 256)},
+		{"narrow", 1, 4096, image.Pt(1, 256)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			source := image.NewNRGBA(image.Rect(10, 20, 10+tc.width, 20+tc.height))
@@ -192,8 +184,8 @@ func TestDownloadHomepageStationIcon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download homepage favicon: %v", err)
 	}
-	if icon.image == nil || icon.image.Bounds().Dx() != 64 || icon.image.Bounds().Dy() != 64 {
-		t.Fatalf("expected resized 64x64 homepage icon dimensions, got %#v", icon.image)
+	if icon.image == nil || icon.image.Bounds().Dx() != 128 || icon.image.Bounds().Dy() != 128 {
+		t.Fatalf("expected 128x128 homepage icon dimensions, got %#v", icon.image)
 	}
 }
 

@@ -10,8 +10,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	_ "image/gif"
-	_ "image/jpeg"
 	"image/png"
 	"io"
 	"log/slog"
@@ -132,7 +130,7 @@ type Window struct {
 	faviconContext                                       context.Context
 	faviconCancel                                        context.CancelFunc
 	faviconSlots                                         chan struct{}
-	faviconCache                                         stationIconCache
+	faviconCache                                         *stationIconCache
 	faviconLoading                                       map[string][]stationImageTarget
 	faviconFailed                                        map[string]bool
 	faviconMissingLogged                                 map[string]bool
@@ -229,9 +227,9 @@ func (e *searchableEntry) TypedKey(key *fyne.KeyEvent) {
 }
 
 const (
-	maxStationIconDimension    = 4096
-	maxStationIconPixels       = 16 * 1024 * 1024
-	stationIconRasterSize      = 64
+	// Retain enough pixels for high-density displays; the 64-entry LRU bounds
+	// the number of decoded raster icons kept in memory.
+	stationIconRasterSize      = 256
 	maxStationIconCacheSize    = 4 << 20
 	stationArtworkSize         = 52
 	stationArtworkCornerRadius = 8
@@ -1150,9 +1148,11 @@ func (w *Window) setStationImage(img *canvas.Image, station radio.Station, curre
 	faviconURL := strings.TrimSpace(station.Favicon)
 	homepageURL := strings.TrimSpace(station.Homepage)
 	key := stationIconKey(station.ID, faviconURL, homepageURL)
-	if cached, ok := w.faviconCache.get(key); ok {
-		applyStationIcon(img, cached)
-		return
+	if w.faviconCache != nil {
+		if cached, ok := w.faviconCache.get(key); ok {
+			applyStationIcon(img, cached)
+			return
+		}
 	}
 	// Only rasterize the fallback while the station artwork is unavailable.
 	applyStationIcon(img, stationIcon{resource: appIconResource})
@@ -1325,72 +1325,40 @@ func downloadHomepageStationIcon(ctx context.Context, client *http.Client, homep
 	if err != nil || homepage.Host == "" || (homepage.Scheme != "http" && homepage.Scheme != "https") {
 		return stationIcon{}, fmt.Errorf("invalid station homepage URL")
 	}
-	data, _, err := favicon.Download(ctx, homepage, favicon.Options{Client: client})
+	icon, err := favicon.Download(ctx, homepage, favicon.Options{Client: client})
 	if err != nil {
 		return stationIcon{}, fmt.Errorf("download homepage favicon: %w", err)
 	}
-	icon, err := decodeStationIcon(data)
-	if err != nil {
-		return stationIcon{}, fmt.Errorf("decode homepage favicon: %w", err)
-	}
-	return icon, nil
+	return stationIconFromFavicon(icon)
 }
 
 func downloadStationIcon(ctx context.Context, client *http.Client, faviconURL string) (stationIcon, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, faviconURL, nil)
+	icon, err := favicon.DownloadURL(ctx, faviconURL, favicon.Options{Client: client})
 	if err != nil {
-		return stationIcon{}, fmt.Errorf("create request: %w", err)
+		return stationIcon{}, err
 	}
-	request.Header.Set("User-Agent", version.UserAgent())
-	response, err := client.Do(request)
-	if err != nil {
-		return stationIcon{}, fmt.Errorf("request failed: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return stationIcon{}, fmt.Errorf("server returned HTTP %d", response.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, (2<<20)+1))
-	if err != nil {
-		return stationIcon{}, fmt.Errorf("read response: %w", err)
-	}
-	if len(data) > 2<<20 {
-		return stationIcon{}, fmt.Errorf("image exceeds 2 MiB size limit")
-	}
-	icon, err := decodeStationIcon(data)
-	if err != nil {
-		contentType := response.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "not provided"
-		}
-		return stationIcon{}, fmt.Errorf("decode favicon response with Content-Type %q: %w", contentType, err)
-	}
-	return icon, nil
+	return stationIconFromFavicon(icon)
 }
 
 func decodeStationIcon(data []byte) (stationIcon, error) {
-	if len(data) == 0 {
-		return stationIcon{}, fmt.Errorf("response contained no image data")
+	icon, err := favicon.Decode(data)
+	if err != nil {
+		return stationIcon{}, err
 	}
-	config, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err == nil {
-		pixels := int64(config.Width) * int64(config.Height)
-		if config.Width <= 0 || config.Height <= 0 || config.Width > maxStationIconDimension || config.Height > maxStationIconDimension || pixels > maxStationIconPixels {
-			return stationIcon{}, fmt.Errorf("%s image dimensions %dx%d are outside the supported limit", format, config.Width, config.Height)
-		}
-		decoded, _, err := image.Decode(bytes.NewReader(data))
-		if err != nil {
-			return stationIcon{}, fmt.Errorf("decode %s image: %w", format, err)
-		}
-		return stationIcon{image: resizeStationIcon(decoded)}, nil
-	}
-	if isSVG(data) {
-		if err := validateSVG(data); err != nil {
+	return stationIconFromFavicon(icon)
+}
+
+func stationIconFromFavicon(icon favicon.Icon) (stationIcon, error) {
+	if len(icon.SVG) > 0 {
+		if err := validateSVG(icon.SVG); err != nil {
 			return stationIcon{}, fmt.Errorf("invalid SVG: %w", err)
 		}
-		return stationIcon{resource: fyne.NewStaticResource("station-favicon.svg", data)}, nil
+		return stationIcon{resource: fyne.NewStaticResource("station-favicon.svg", icon.SVG)}, nil
 	}
-	return stationIcon{}, fmt.Errorf("unsupported or invalid image format: %w", err)
+	if icon.Raster == nil {
+		return stationIcon{}, fmt.Errorf("favicon contains no image")
+	}
+	return stationIcon{image: resizeStationIcon(icon.Raster)}, nil
 }
 
 // Keep cached artwork close to the size used by the player and station rows.
@@ -1412,6 +1380,7 @@ func resizeStationIcon(source image.Image) image.Image {
 	return resized
 }
 
+// isSVG detects SVG data so the navigation bar can tint vector icons.
 func isSVG(data []byte) bool {
 	trimmed := bytes.TrimSpace(data)
 	return bytes.HasPrefix(trimmed, []byte("<svg")) || bytes.HasPrefix(trimmed, []byte("<?xml"))

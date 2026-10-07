@@ -9,6 +9,7 @@ require (
 	github.com/colespringer/waxflow v0.0.0-20260923050513-446ca3124d89
 	github.com/ebitengine/oto/v3 v3.5.1
 	github.com/fyne-io/image v0.1.1
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 )

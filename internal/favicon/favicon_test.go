@@ -3,11 +3,13 @@ package favicon
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"go.lucor.dev/fynetune/internal/version"
@@ -32,17 +34,6 @@ func TestFindBetterSizeUsesLargestNonPNGWhenNoPNGExists(t *testing.T) {
 	}
 	if got := findBetterSize(icons); got != icons[2] {
 		t.Fatalf("selected favicon = %#v, want largest icon %#v", got, icons[2])
-	}
-}
-
-func TestFindBetterSizeFromImagesKeepsHighestResolution(t *testing.T) {
-	icons := []image.Image{
-		image.NewRGBA(image.Rect(0, 0, 16, 16)),
-		image.NewRGBA(image.Rect(0, 0, 128, 128)),
-		image.NewRGBA(image.Rect(0, 0, 32, 32)),
-	}
-	if got := findBetterSizeFromImages(icons); got != icons[1] {
-		t.Fatalf("selected image size = %v, want 128x128", got.Bounds().Size())
 	}
 }
 
@@ -80,18 +71,81 @@ func TestDownloadFollowsRedirectAndResolvesIconAgainstFinalURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, format, err := Download(context.Background(), startURL, Options{Client: redirect.Client()})
+	icon, err := Download(context.Background(), startURL, Options{Client: redirect.Client()})
 	if err != nil {
 		t.Fatalf("Download() error = %v", err)
 	}
-	if format != "png" {
-		t.Fatalf("format = %q, want png", format)
+	if icon.Raster == nil || len(icon.SVG) != 0 {
+		t.Fatalf("downloaded icon = %+v, want raster image", icon)
 	}
-	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if got := icon.Raster.Bounds().Size(); got != image.Pt(128, 128) {
+		t.Fatalf("downloaded icon dimensions = %v, want 128x128", got)
+	}
+}
+
+func TestDownloadDoesNotMutateURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><head><link rel="icon" href="/icon.png"></head></html>`))
+	}))
+	defer server.Close()
+
+	u, err := url.Parse(strings.TrimPrefix(server.URL, "http:"))
 	if err != nil {
-		t.Fatalf("decode downloaded icon config: %v", err)
+		t.Fatal(err)
 	}
-	if config.Width != 128 || config.Height != 128 {
-		t.Fatalf("downloaded icon dimensions = %dx%d, want 128x128", config.Width, config.Height)
+	if _, err := Download(context.Background(), u, Options{Client: server.Client()}); err == nil {
+		t.Fatal("Download() error = nil, want HTTPS request failure from the copied URL")
+	}
+	if u.Scheme != "" {
+		t.Fatalf("Download() changed URL scheme to %q", u.Scheme)
+	}
+}
+
+func TestDecodeReturnsSVGBytes(t *testing.T) {
+	data := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>`)
+	icon, err := Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if icon.Raster != nil || !bytes.Equal(icon.SVG, data) {
+		t.Fatalf("Decode() = %+v, want original SVG bytes", icon)
+	}
+}
+
+func TestDecodeWebP(t *testing.T) {
+	data, err := base64.StdEncoding.DecodeString("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	icon, err := Decode(data)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if icon.Raster == nil || icon.Raster.Bounds().Size() != image.Pt(1, 1) {
+		t.Fatalf("Decode() raster = %v, want 1x1 WebP", icon.Raster)
+	}
+}
+
+func TestDecodeRejectsExcessiveDimensions(t *testing.T) {
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, maxIconDimension+1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decode(encoded.Bytes()); err == nil {
+		t.Fatal("Decode() error = nil, want dimension limit error")
+	}
+}
+
+func TestDownloadRejectsOversizedIcon(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(bytes.Repeat([]byte("x"), maxIconBytes+1))
+	}))
+	defer server.Close()
+
+	if _, err := DownloadURL(context.Background(), server.URL, Options{Client: server.Client()}); err == nil {
+		t.Fatal("DownloadURL() error = nil, want size limit error")
 	}
 }
