@@ -213,15 +213,20 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 		if err == nil {
 			err = ErrStreamEnded
 		}
-		slog.Error("radio playback attempt failed", "station", station.Name, "station_id", station.ID, "attempt", attempt+1, "error", err)
-		if !retrypolicy.ShouldRetry(err) {
+		shouldRetry := retrypolicy.ShouldRetry(err)
+		p.mu.Lock()
+		retryEnabled := p.reconnectEnabled
+		p.mu.Unlock()
+		if shouldRetry && retryEnabled {
+			slog.Warn("radio playback attempt failed; reconnecting", "station", station.Name, "station_id", station.ID, "attempt", attempt+1, "error", err)
+		} else {
+			slog.Error("radio playback failed", "station", station.Name, "station_id", station.ID, "attempt", attempt+1, "error", err)
+		}
+		if !shouldRetry {
 			p.setState(ctx, session, StateError, station, err, attempt)
 			return
 		}
-		p.mu.Lock()
-		retry := p.reconnectEnabled
-		p.mu.Unlock()
-		if !retry {
+		if !retryEnabled {
 			p.setState(ctx, session, StateError, station, err, attempt)
 			return
 		}
@@ -261,7 +266,7 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 		}
 		p.emit(Event{State: StatePlaying, Station: station, Metadata: metadata, StreamInfo: info})
 		p.mu.Unlock()
-		slog.Info("ICY StreamTitle received", "station", station.Name, "station_id", station.ID, "raw_title", metadata.RawTitle, "artist", metadata.Artist, "title", metadata.Title, "album", metadata.Album, "year", metadata.Year, "parsed", metadata.Parsed)
+		slog.Debug("ICY StreamTitle received", "station", station.Name, "station_id", station.ID, "raw_title", metadata.RawTitle, "artist", metadata.Artist, "title", metadata.Title, "album", metadata.Album, "year", metadata.Year, "parsed", metadata.Parsed)
 	})
 	if err != nil {
 		return err

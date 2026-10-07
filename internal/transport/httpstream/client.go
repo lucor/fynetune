@@ -65,8 +65,8 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 	}
 	body := bufio.NewReaderSize(resp.Body, 32)
 	kind := playlist.Detect(contentType, resolvedURL, nil)
-	// Probe the body only when response metadata does not identify the resource.
-	// Audio responses can be live streams that take time to produce data.
+	// Probe the body only when the response type and URL do not identify the
+	// resource. Audio responses can be live streams that take time to produce data.
 	if kind == playlist.KindNotPlaylist && !strings.HasPrefix(contentType, "audio/") {
 		prefix, _ := body.Peek(16)
 		kind = playlist.Detect(contentType, resolvedURL, prefix)
@@ -183,7 +183,7 @@ func classifyPlaylistError(err error) error {
 
 func closeResponseBody(body io.Closer) {
 	if err := body.Close(); err != nil {
-		slog.Warn("could not close rejected radio response", "error", err)
+		slog.Debug("could not close rejected radio response", "error", err)
 	}
 }
 

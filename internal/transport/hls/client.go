@@ -57,6 +57,19 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 	}
 	hlsClient.OnTracks = stream.onTracks
 	hlsClient.OnDecodeError = stream.onDecodeError
+	// Replace gohlslib's default log.Printf callbacks with structured debug logs.
+	hlsClient.OnDownloadPrimaryPlaylist = func(rawURL string) {
+		slog.Debug("downloading primary HLS playlist", "url", rawURL)
+	}
+	hlsClient.OnDownloadStreamPlaylist = func(rawURL string) {
+		slog.Debug("downloading HLS stream playlist", "url", rawURL)
+	}
+	hlsClient.OnDownloadSegment = func(rawURL string) {
+		slog.Debug("downloading HLS segment", "url", rawURL)
+	}
+	hlsClient.OnDownloadPart = func(rawURL string) {
+		slog.Debug("downloading HLS part", "url", rawURL)
+	}
 	if err := hlsClient.Start(); err != nil {
 		_ = reader.Close()
 		_ = writer.CloseWithError(err)

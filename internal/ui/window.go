@@ -174,6 +174,8 @@ func restoreSelectedStation(id string, stations []radio.Station, recent []recent
 type stationIcon struct {
 	image    image.Image
 	resource fyne.Resource
+	format   string
+	size     image.Point
 }
 
 type fixedHeightLayout struct {
@@ -1158,7 +1160,7 @@ func (w *Window) setStationImage(img *canvas.Image, station radio.Station, curre
 	applyStationIcon(img, stationIcon{resource: appIconResource})
 	if faviconURL == "" && homepageURL == "" && (station.ID == "" || w.cacheStore == nil) {
 		if !w.faviconMissingLogged[station.ID] {
-			slog.Info("station icon unavailable; using fallback", "station", station.Name, "reason", "Radio Browser did not provide a favicon URL and station homepage is empty")
+			slog.Debug("station icon unavailable; using fallback", "station", station.Name, "reason", "Radio Browser did not provide a favicon URL and station homepage is empty")
 			w.faviconMissingLogged[station.ID] = true
 		}
 		return
@@ -1193,13 +1195,14 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 	var cachedData []byte
 	cacheResult, cacheErr := w.cacheStore.Get(cacheKey, stationIconCacheTTL, &cachedData)
 	if cacheErr != nil {
-		slog.Warn("could not read cached station icon", "station", stationName, "error", cacheErr)
+		slog.Debug("could not read cached station icon; will fetch it", "station", stationName, "error", cacheErr)
 	}
 	if cacheResult.Found {
 		cachedIcon, err := decodeStationIcon(cachedData)
 		if err != nil {
-			slog.Warn("cached station icon is invalid", "station", stationName, "error", err)
+			slog.Debug("cached station icon is invalid; will fetch it", "station", stationName, "error", err)
 		} else {
+			logStationIcon(stationID, stationName, "app_cache", cachedIcon)
 			w.applyCachedStationIcon(stationID, key, cachedIcon, cacheResult.Fresh)
 			if cacheResult.Fresh {
 				return
@@ -1211,7 +1214,7 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 			delete(w.faviconLoading, key)
 			w.faviconFailed[key] = true
 			if !w.faviconMissingLogged[stationID] {
-				slog.Info("station icon unavailable; using fallback", "station", stationName, "reason", "Radio Browser did not provide a favicon URL and station homepage is empty")
+				slog.Debug("station icon unavailable; using fallback", "station", stationName, "reason", "Radio Browser did not provide a favicon URL and station homepage is empty")
 				w.faviconMissingLogged[stationID] = true
 			}
 		})
@@ -1226,11 +1229,12 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 	}
 	var icon stationIcon
 	var err error
+	source := "homepage"
 	if acquired {
 		if homepageURL != "" {
 			icon, err = downloadHomepageStationIcon(ctx, w.faviconClient, homepageURL)
 			if err != nil {
-				slog.Warn("station homepage favicon unavailable; trying Radio Browser favicon", "station", stationName, "homepage", homepageURL, "reason", err)
+				slog.Debug("station homepage favicon unavailable; trying Radio Browser favicon", "station", stationName, "homepage", homepageURL, "reason", err)
 			}
 		} else {
 			err = fmt.Errorf("station homepage URL is unavailable")
@@ -1238,24 +1242,26 @@ func (w *Window) fetchStationImage(stationID, stationName, key, faviconURL, home
 		if err != nil && faviconURL != "" && ctx.Err() == nil {
 			icon, err = downloadStationIcon(ctx, w.faviconClient, faviconURL)
 			if err == nil {
-				slog.Info("station icon loaded from Radio Browser favicon", "station", stationName, "favicon", faviconURL)
+				source = "radiobrowser_favicon"
+				slog.Debug("station icon loaded from Radio Browser favicon", "station", stationName, "favicon", faviconURL)
 			} else {
-				slog.Warn("Radio Browser favicon unavailable; using fallback", "station", stationName, "favicon", faviconURL, "reason", err)
+				slog.Debug("Radio Browser favicon unavailable; using fallback", "station", stationName, "favicon", faviconURL, "reason", err)
 			}
 		}
 		if err == nil && homepageURL != "" {
-			slog.Info("station icon loaded from homepage favicon", "station", stationName, "homepage", homepageURL)
+			slog.Debug("station icon loaded from homepage favicon", "station", stationName, "homepage", homepageURL)
 		}
 	} else {
 		err = ctx.Err()
 	}
 	if err == nil {
+		logStationIcon(stationID, stationName, source, icon)
 		if data, encodeErr := encodeStationIcon(icon); encodeErr != nil {
-			slog.Warn("could not encode station icon for cache", "station", stationName, "error", encodeErr)
+			slog.Debug("could not encode station icon for cache", "station", stationName, "error", encodeErr)
 		} else if len(data) > maxStationIconCacheSize {
-			slog.Warn("station icon exceeds cache size limit", "station", stationName, "size_bytes", len(data))
+			slog.Debug("station icon exceeds cache size limit", "station", stationName, "size_bytes", len(data))
 		} else if cacheErr := w.cacheStore.Set(cacheKey, data); cacheErr != nil {
-			slog.Warn("could not cache station icon", "station", stationName, "error", cacheErr)
+			slog.Debug("could not cache station icon", "station", stationName, "error", cacheErr)
 		}
 	}
 	fyne.Do(func() {
@@ -1353,12 +1359,22 @@ func stationIconFromFavicon(icon favicon.Icon) (stationIcon, error) {
 		if err := validateSVG(icon.SVG); err != nil {
 			return stationIcon{}, fmt.Errorf("invalid SVG: %w", err)
 		}
-		return stationIcon{resource: fyne.NewStaticResource("station-favicon.svg", icon.SVG)}, nil
+		return stationIcon{resource: fyne.NewStaticResource("station-favicon.svg", icon.SVG), format: icon.Format}, nil
 	}
 	if icon.Raster == nil {
 		return stationIcon{}, fmt.Errorf("favicon contains no image")
 	}
-	return stationIcon{image: resizeStationIcon(icon.Raster)}, nil
+	return stationIcon{image: resizeStationIcon(icon.Raster), format: icon.Format, size: icon.Size}, nil
+}
+
+// logStationIcon records the source format and dimensions for favicon debugging.
+// SVG is vector data, so its pixel dimensions are not defined at decode time.
+func logStationIcon(stationID, stationName, source string, icon stationIcon) {
+	dimensions := "vector"
+	if icon.image != nil {
+		dimensions = fmt.Sprintf("%dx%d", icon.size.X, icon.size.Y)
+	}
+	slog.Debug("station icon decoded", "station", stationName, "station_id", stationID, "source", source, "format", icon.format, "dimensions", dimensions)
 }
 
 // Keep cached artwork close to the size used by the player and station rows.
@@ -1568,7 +1584,7 @@ func (w *Window) loadCountries() {
 		var cached []radiobrowser.Country
 		cacheResult, cacheErr := w.cacheStore.Get("radio-browser:countries:v2", radioBrowserCacheTTL, &cached)
 		if cacheErr != nil {
-			slog.Warn("could not read cached Radio Browser countries", "error", cacheErr)
+			slog.Debug("could not read cached Radio Browser countries; will refresh", "error", cacheErr)
 		}
 		if cacheResult.Found {
 			w.setCountryOptions(cached)
@@ -1589,7 +1605,7 @@ func (w *Window) loadCountries() {
 			return
 		}
 		if cacheErr := w.cacheStore.Set("radio-browser:countries:v2", countries); cacheErr != nil {
-			slog.Warn("could not cache Radio Browser countries", "error", cacheErr)
+			slog.Debug("could not cache Radio Browser countries", "error", cacheErr)
 		}
 		w.setCountryOptions(countries)
 	}()
@@ -1754,7 +1770,7 @@ func (w *Window) fetchDirectory(query radiobrowser.Query, popular bool) {
 		var cached []radio.Station
 		cacheResult, cacheErr := w.cacheStore.Get(key, radioBrowserCacheTTL, &cached)
 		if cacheErr != nil {
-			slog.Warn("could not read cached Radio Browser stations", "error", cacheErr)
+			slog.Debug("could not read cached Radio Browser stations; will refresh", "error", cacheErr)
 		}
 		retry := func() { w.fetchDirectory(query, popular) }
 		if cacheResult.Found {
@@ -1779,7 +1795,7 @@ func (w *Window) fetchDirectory(query radiobrowser.Query, popular bool) {
 		}
 		if err == nil {
 			if cacheErr := w.cacheStore.Set(key, stations); cacheErr != nil {
-				slog.Warn("could not cache Radio Browser stations", "error", cacheErr)
+				slog.Debug("could not cache Radio Browser stations", "error", cacheErr)
 			}
 			w.showDirectoryResults(seq, stations, nil, retry, "")
 			return

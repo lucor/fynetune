@@ -3,8 +3,9 @@ package main
 
 import (
 	_ "embed"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -30,6 +31,7 @@ const (
 var appIconSVG []byte
 
 func main() {
+	configureLogging()
 	a := app.NewWithID(appID)
 	metadata := a.Metadata()
 	metadata.ID = appID
@@ -54,6 +56,19 @@ func main() {
 	window := ui.New(a, radioPlayer, radioBrowserClient)
 	window.Run()
 	if err := window.Close(); err != nil {
-		log.Printf("close radio player: %v", err)
+		slog.Error("could not close radio player", "error", err)
 	}
+}
+
+// configureLogging sets the minimum slog level. Debug diagnostics can be
+// enabled for a run with FYNETUNE_LOG_LEVEL=debug.
+func configureLogging() {
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelInfo)
+	if value := os.Getenv("FYNETUNE_LOG_LEVEL"); value != "" {
+		if err := level.UnmarshalText([]byte(value)); err != nil {
+			slog.Warn("invalid FYNETUNE_LOG_LEVEL; using info", "value", value, "error", err)
+		}
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }

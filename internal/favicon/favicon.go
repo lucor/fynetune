@@ -43,8 +43,14 @@ type Options struct {
 // Icon contains either a decoded raster favicon or the original SVG bytes.
 // Exactly one field is set.
 type Icon struct {
+	// Raster contains the decoded raster image, when the icon is not SVG.
 	Raster image.Image
-	SVG    []byte
+	// SVG contains the source SVG bytes, when the icon is vector-based.
+	SVG []byte
+	// Format is the detected image format, such as png, ico, or svg.
+	Format string
+	// Size is the source raster's dimensions. It is zero for SVG icons.
+	Size image.Point
 }
 
 // Download finds and downloads the best icon linked from the specified page.
@@ -113,7 +119,7 @@ func decode(data []byte, contentType string) (Icon, error) {
 	}
 	mediaType, _, _ := mime.ParseMediaType(contentType)
 	if strings.EqualFold(mediaType, "image/svg+xml") || isSVG(data) {
-		return Icon{SVG: bytes.Clone(data)}, nil
+		return Icon{SVG: bytes.Clone(data), Format: "svg"}, nil
 	}
 
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
@@ -131,7 +137,7 @@ func decode(data []byte, contentType string) (Icon, error) {
 	if bounds.Dx() <= 0 || bounds.Dy() <= 0 || bounds.Dx() > maxIconDimension || bounds.Dy() > maxIconDimension || int64(bounds.Dx())*int64(bounds.Dy()) > maxIconPixels {
 		return Icon{}, fmt.Errorf("%s image dimensions %dx%d are outside the supported limit", format, bounds.Dx(), bounds.Dy())
 	}
-	return Icon{Raster: decoded}, nil
+	return Icon{Raster: decoded, Format: format, Size: bounds.Size()}, nil
 }
 
 func isSVG(data []byte) bool {
