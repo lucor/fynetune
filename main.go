@@ -34,15 +34,15 @@ func main() {
 	metadata := a.Metadata()
 	metadata.ID = appID
 	metadata.Name = appName
-	if !metadata.Release {
-		metadata.Version = version.Current().Version
-	}
+	metadata.Icon = fyne.NewStaticResource(appIconName, appIconSVG)
 	if metadata.Build < 1 {
 		metadata.Build = 1
 	}
-	metadata.Icon = fyne.NewStaticResource(appIconName, appIconSVG)
+	version.SetApplicationMetadata(metadata)
+	if !metadata.Release {
+		metadata.Version = version.Current().Version
+	}
 	app.SetMetadata(metadata)
-	version.SetApplicationMetadata(a.Metadata())
 	// Stream requests can remain open during playback, so this client limits only response-header wait time.
 	streamClient := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: streamResponseHeaderTimeout}}
 	// Radio Browser requests are short API calls, so this client has a total request timeout.
