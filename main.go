@@ -1,4 +1,4 @@
-// Package main wires the FyneTune desktop application and its runtime dependencies.
+// Package main wires the FyneTune desktop application.
 package main
 
 import (
@@ -20,11 +20,11 @@ import (
 )
 
 const (
-	appID                       = "dev.lucor.fynetune"
-	appName                     = "FyneTune"
-	appIconName                 = "icon.svg"
-	streamResponseHeaderTimeout = 15 * time.Second
-	radioBrowserRequestTimeout  = 15 * time.Second
+	appID                   = "dev.lucor.fynetune"
+	appName                 = "FyneTune"
+	appIconName             = "icon.svg"
+	radioBrowserHTTPTimeout = 15 * time.Second
+	streamHeaderTimeout     = 15 * time.Second
 )
 
 //go:embed internal/ui/assets/icon.svg
@@ -45,19 +45,12 @@ func main() {
 		metadata.Version = version.Current().Version
 	}
 	app.SetMetadata(metadata)
-	// Stream requests can remain open during playback, so this client limits only response-header wait time.
-	streamClient := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: streamResponseHeaderTimeout}}
-	// Radio Browser requests are short API calls, so this client has a total request timeout.
-	radioBrowserHTTPClient := &http.Client{Timeout: radioBrowserRequestTimeout}
-	// The radio engine connects stream transport, codec selection, and audio output.
-	radioPlayer := radio.NewPlayer(httpstream.New(streamClient), codec.New(), otooutput.New())
-	// The Radio Browser client supplies station directories to the Fyne UI.
+	radioBrowserHTTPClient := &http.Client{Timeout: radioBrowserHTTPTimeout}
 	radioBrowserClient := radiobrowser.New(radioBrowserHTTPClient)
+	streamHTTPClient := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: streamHeaderTimeout}}
+	radioPlayer := radio.NewPlayer(httpstream.New(streamHTTPClient), codec.New(), otooutput.New())
 	window := ui.New(a, radioPlayer, radioBrowserClient)
 	window.Run()
-	if err := window.Close(); err != nil {
-		slog.Error("could not close radio player", "error", err)
-	}
 }
 
 // configureLogging sets the minimum slog level. Debug diagnostics can be

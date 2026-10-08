@@ -25,7 +25,7 @@ func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 			t.Errorf("User-Agent = %q, want %q", got, want)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"stationuuid":"uuid-1","name":"Jazz FM","url":"https://playlist.example/listen.m3u","url_resolved":"https://stream.example/jazz.mp3","homepage":"https://example","favicon":"https://example/icon.png","codec":"MP3","bitrate":128,"country":"Italy","language":"Italian","tags":"jazz, smooth jazz"}]`))
+		_, _ = w.Write([]byte(`[{"stationuuid":"uuid-1","name":"Jazz FM","url":"https://playlist.example/listen.m3u","url_resolved":"https://stream.example/jazz.mp3","homepage":"https://example","favicon":"https://example/icon.png","codec":"MP3","bitrate":128,"country":"Italy","countrycode":"IT","language":"Italian","tags":"jazz, smooth jazz"}]`))
 	}))
 	defer server.Close()
 
@@ -42,7 +42,7 @@ func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 	if got.ID != "uuid-1" || got.Name != "Jazz FM" || got.URL != "https://playlist.example/listen.m3u" || got.ResolvedURL != "https://stream.example/jazz.mp3" {
 		t.Fatalf("unexpected station mapping: %#v", got)
 	}
-	if got.Codec != "MP3" || got.Bitrate != 128 || got.Country != "Italy" || got.Language != "Italian" {
+	if got.Codec != "MP3" || got.Bitrate != 128 || got.Country != "Italy" || got.CountryCode != "IT" || got.Language != "Italian" {
 		t.Fatalf("station metadata missing: %#v", got)
 	}
 	if !reflect.DeepEqual(got.Tags, []string{"jazz", "smooth jazz"}) {

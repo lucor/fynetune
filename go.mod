@@ -12,6 +12,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
+	golang.org/x/text v0.42.0
 )
 
 require (
@@ -68,7 +69,6 @@ require (
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
-	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	golang.org/x/tools/go/vcs v0.1.0-deprecated // indirect
 	golang.org/x/vuln v1.8.0 // indirect

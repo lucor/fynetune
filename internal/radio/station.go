@@ -26,6 +26,7 @@ type Station struct {
 	Codec       string   `json:"codec,omitempty"`
 	Bitrate     int      `json:"bitrate,omitempty"`
 	Country     string   `json:"country,omitempty"`
+	CountryCode string   `json:"country_code,omitempty"`
 	Language    string   `json:"language,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 }

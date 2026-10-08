@@ -196,6 +196,7 @@ type stationRecord struct {
 	Codec       string `json:"codec"`
 	Bitrate     int    `json:"bitrate"`
 	Country     string `json:"country"`
+	CountryCode string `json:"countrycode"`
 	Language    string `json:"language"`
 	Tags        string `json:"tags"`
 }
@@ -213,6 +214,7 @@ func (s stationRecord) station() radio.Station {
 		ResolvedURL: strings.TrimSpace(s.ResolvedURL), Homepage: strings.TrimSpace(s.Homepage),
 		Favicon: strings.TrimSpace(s.Favicon), Codec: strings.TrimSpace(s.Codec),
 		Bitrate: s.Bitrate, Country: strings.TrimSpace(s.Country),
-		Language: strings.TrimSpace(s.Language), Tags: tags,
+		CountryCode: strings.ToUpper(strings.TrimSpace(s.CountryCode)),
+		Language:    strings.TrimSpace(s.Language), Tags: tags,
 	}
 }

@@ -24,7 +24,9 @@ type Settings struct {
 	Stations                            []radio.Station
 	Selected                            string
 	DiscoveryCountry                    string
-	Volume                              float64
+	// Appearance selects whether the app follows the system, light, or dark theme.
+	Appearance string
+	Volume     float64
 }
 
 type RecentStation struct {
@@ -36,7 +38,7 @@ type Store struct{ p fyne.Preferences }
 
 func New(a fyne.App) *Store { return &Store{p: a.Preferences()} }
 func (s *Store) Load() (Settings, error) {
-	v := Settings{Reconnect: true, Volume: .75}
+	v := Settings{Reconnect: true, Volume: .75, Appearance: "system"}
 	raw := s.p.String("stations")
 	if raw != "" {
 		var rows []radio.Station
@@ -53,6 +55,7 @@ func (s *Store) Load() (Settings, error) {
 	}
 	v.Selected = s.p.String("selected_station_id")
 	v.DiscoveryCountry = s.p.String("discovery_country")
+	v.Appearance = s.p.StringWithFallback("appearance", "system")
 	v.Volume = s.p.Float("volume")
 	if v.Volume == 0 && s.p.String("volume") == "" {
 		v.Volume = .75
@@ -122,6 +125,7 @@ func (s *Store) SaveSettings(v Settings) error {
 	}
 	s.p.SetString("selected_station_id", v.Selected)
 	s.p.SetString("discovery_country", v.DiscoveryCountry)
+	s.p.SetString("appearance", v.Appearance)
 	s.p.SetFloat("volume", v.Volume)
 	s.p.SetBool("auto_play", v.AutoPlay)
 	s.p.SetBool("reconnect_enabled", v.Reconnect)
