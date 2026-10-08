@@ -34,7 +34,7 @@ Project tasks are available through mise:
 
 - `mise run build` builds the desktop binary to `dist/fynetune`.
 - `mise run licenses` manually generates `THIRD_PARTY_LICENSES` from Go module dependencies.
-- `mise run package-macos`, `mise run package-linux`, and `mise run package-windows` create a package for the named desktop platform.
+- `mise run package` creates a package for the current desktop platform.
 - `mise run package-android` builds an Android APK.
 - `mise run check` runs formatting, static analysis, vulnerability checks, tests, and a build.
 - `mise run test-race` runs tests with Go's race detector.

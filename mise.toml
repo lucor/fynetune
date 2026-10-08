@@ -48,17 +48,9 @@ run = "go tool lian --dump -o THIRD_PARTY_LICENSES go.mod"
 description = "Build FyneTune with Fyne application metadata embedded"
 run = "mkdir -p dist && go tool fyne build --source-dir . --output dist/fynetune"
 
-[tasks.package-macos]
-description = "Create a macOS development application bundle"
-run = "mkdir -p dist && cd dist && go tool fyne package --os darwin --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
-
-[tasks.package-linux]
-description = "Create a Linux development package"
-run = "mkdir -p dist && cd dist && go tool fyne package --os linux --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
-
-[tasks.package-windows]
-description = "Create a Windows development package"
-run = "mkdir -p dist && cd dist && go tool fyne package --os windows --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+[tasks.package]
+description = "Create a development package for the current desktop operating system"
+run = "mkdir -p dist && cd dist && go tool fyne package --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
 
 [tasks.check]
 description = "Run formatting, analysis, tests, vulnerability check, and build"
