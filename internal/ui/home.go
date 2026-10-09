@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
@@ -23,7 +24,7 @@ const (
 type homeSection struct {
 	*fyne.Container
 	window    *Window
-	heading   *widget.Label
+	subtitle  *widget.Label
 	status    *widget.Label
 	rows      *stationList
 	requestID uint64
@@ -32,12 +33,13 @@ type homeSection struct {
 // newHomeSection creates the Radio section and its reusable station list.
 func newHomeSection(w *Window) *homeSection {
 	h := &homeSection{
-		window:  w,
-		heading: widget.NewLabelWithStyle(homeHeading(w.settings.DiscoveryCountry), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		status:  widget.NewLabel("Loading stations…"),
-		rows:    newStationList(w, false),
+		window:   w,
+		subtitle: widget.NewLabel(homeSubtitle(w.settings.DiscoveryCountry)),
+		status:   widget.NewLabel("Loading stations…"),
+		rows:     newStationList(w, false),
 	}
-	h.Container = container.NewBorder(container.NewVBox(h.heading, h.status), nil, nil, nil, h.rows.list)
+	h.subtitle.SizeName = theme.SizeNameText
+	h.Container = container.NewBorder(h.status, nil, nil, nil, h.rows.list)
 	return h
 }
 
@@ -52,23 +54,23 @@ func (h *homeSection) setStations(stations []radio.Station) {
 	}
 }
 
-// homeHeading returns a title for the saved discovery region.
-func homeHeading(region string) string {
+// homeSubtitle describes the popular stations shown for the saved country.
+func homeSubtitle(region string) string {
 	region = strings.TrimSpace(region)
 	switch {
 	case region == "", region == "*":
 		return "Popular stations"
 	case strings.HasPrefix(region, "@"):
 		if name := countryNameForCode(strings.TrimPrefix(region, "@")); name != "" {
-			return "Popular in " + name
+			return "Popular stations in " + name
 		}
 		return "Popular stations"
 	default:
-		return "Popular in " + region
+		return "Popular stations in " + region
 	}
 }
 
-// setStatus shows loading and empty-result messages while keeping the heading visible.
+// setStatus shows loading and empty-result messages above the station list.
 func (h *homeSection) setStatus(text string) {
 	h.status.SetText(text)
 	if text == "" {

@@ -51,19 +51,6 @@ type brandTheme struct {
 	appearance string
 }
 
-// stationRowTextTheme removes padding from compact station title text.
-type stationRowTextTheme struct {
-	fyne.Theme
-}
-
-// Size returns zero padding and line spacing for station row titles.
-func (t stationRowTextTheme) Size(name fyne.ThemeSizeName) float32 {
-	if name == theme.SizeNameInnerPadding || name == theme.SizeNameLineSpacing {
-		return 0
-	}
-	return t.Theme.Size(name)
-}
-
 // Color applies the FyneTune palette and station metadata colors.
 func (t brandTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch t.appearance {

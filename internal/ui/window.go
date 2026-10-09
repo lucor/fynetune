@@ -27,7 +27,7 @@ type Window struct {
 	app                 fyne.App
 	window              fyne.Window
 	theme               *brandTheme
-	sectionHeader       *canvas.Text
+	sectionHeader       *widget.Label
 	settingsCountryFlag *canvas.Text
 	settingsCountryName *widget.Label
 	radioPlayer         radio.Player
@@ -100,7 +100,6 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		lastVariant = variant
 		sectionTitleColor := settings.Theme().Color(sectionTitleColorName, variant)
 		if w.sectionHeader != nil {
-			w.sectionHeader.Color = sectionTitleColor
 			w.sectionHeader.Refresh()
 		}
 		slog.Debug("Fyne theme variant changed",
@@ -146,7 +145,6 @@ func (w *Window) setAppearance(appearance string) {
 	w.theme.appearance = appearance
 	w.app.Settings().SetTheme(w.theme)
 	if w.sectionHeader != nil {
-		w.sectionHeader.Color = theme.Color(sectionTitleColorName)
 		w.sectionHeader.Refresh()
 	}
 	err := w.saveSettings()

@@ -4,7 +4,6 @@ import (
 	_ "embed"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -51,13 +50,10 @@ func newApp(w *Window) fyne.CanvasObject {
 	content := container.NewStack(pages[0])
 	w.playerBar = newPlayerWidget(w.app.Settings().Theme(), w.settings.Volume, w.togglePlayback, w.setVolume, w.toggleMute)
 
-	headerText := canvas.NewText("Radio", theme.Color(sectionTitleColorName))
+	headerText := widget.NewLabelWithStyle("Radio", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	w.sectionHeader = headerText
-	headerText.TextSize = theme.Size(theme.SizeNameHeadingText)
-	headerText.TextStyle.Bold = true
-	sectionHeader := container.NewPadded(container.NewCenter(headerText))
-	headerContent := container.NewStack(sectionHeader)
-	header := container.NewBorder(nil, nil, headerContent, nil, nil)
+	headerText.SizeName = theme.SizeNameHeadingText
+	header := container.NewVBox(headerText, home.subtitle)
 
 	nav := navigation.New(
 		navigation.Item{
@@ -76,9 +72,12 @@ func newApp(w *Window) fyne.CanvasObject {
 	nav.OnSelected = func(index int) {
 		content.Objects = []fyne.CanvasObject{pages[index]}
 		content.Refresh()
-		headerText.Text = headerTitles[index]
-		headerText.Refresh()
-		headerContent.Refresh()
+		headerText.SetText(headerTitles[index])
+		if index == 0 {
+			home.subtitle.Show()
+		} else {
+			home.subtitle.Hide()
+		}
 		header.Refresh()
 	}
 

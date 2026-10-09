@@ -322,7 +322,7 @@ func (o *onboarding) startCountrySetup(code string) {
 		w.setContent(w.appContent)
 		w.refreshSettingsCountry()
 		if w.home != nil {
-			w.home.heading.SetText(homeHeading(w.settings.DiscoveryCountry))
+			w.home.subtitle.SetText(homeSubtitle(w.settings.DiscoveryCountry))
 			w.home.loadPopular()
 		}
 		return

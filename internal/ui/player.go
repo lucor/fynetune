@@ -64,8 +64,7 @@ func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVo
 	play.Importance = widget.HighImportance
 	play.Disable()
 
-	stationTitle := container.NewThemeOverride(title, stationRowTextTheme{Theme: baseTheme})
-	playerText := container.New(layout.NewCustomPaddedVBoxLayout(playerTextGap), stationTitle, track)
+	playerText := container.New(layout.NewCustomPaddedVBoxLayout(playerTextGap), title, track)
 	centeredText := container.NewVBox(layout.NewSpacer(), playerText, layout.NewSpacer())
 	playControl := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(playerControlSize),
 		container.NewThemeOverride(play, playerControlTheme{Theme: baseTheme})))
