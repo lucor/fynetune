@@ -56,8 +56,9 @@ func newApp(w *Window) fyne.CanvasObject {
 	sectionHeader := container.NewBorder(nil, nil, nil, favorites.saved, headerText)
 	favorites.saved.Hide()
 	favorites.subtitle.Hide()
+	recent.subtitle.Hide()
 	header := container.NewThemeOverride(
-		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle)),
+		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle, recent.subtitle)),
 		compactTextTheme{Theme: w.app.Settings().Theme()},
 	)
 
@@ -93,6 +94,12 @@ func newApp(w *Window) fyne.CanvasObject {
 			favorites.saved.Show()
 		} else {
 			favorites.saved.Hide()
+		}
+		if index == 2 {
+			recent.subtitle.Show()
+			recent.refresh()
+		} else {
+			recent.subtitle.Hide()
 		}
 		header.Refresh()
 	}

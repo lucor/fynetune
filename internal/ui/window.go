@@ -440,7 +440,7 @@ func (w *Window) toggleFavorite(station radio.Station) {
 		w.favorites.refresh()
 	}
 	if w.recentSection != nil {
-		w.recentSection.rows.list.Refresh()
+		w.recentSection.refresh()
 	}
 }
 

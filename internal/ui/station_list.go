@@ -6,12 +6,14 @@ import (
 	"image"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hashicorp/golang-lru/v2"
@@ -23,9 +25,10 @@ import (
 )
 
 const (
-	stationIconSize     = 256
-	stationArtworkSize  = 52
-	stationArtworkRound = 8
+	stationIconSize      = 256
+	stationArtworkSize   = 52
+	stationArtworkRound  = 8
+	stationBadgePaddingY = 2
 )
 
 // stationListEntry pairs a station with optional Recent playback time.
@@ -57,8 +60,6 @@ type stationListRow struct {
 	description  *widget.Label
 	codecBadge   *widgets.Badge
 	bitrateBadge *widgets.Badge
-	recentName   *widget.Label
-	recentTime   *widget.Label
 }
 
 // newStationList builds the shared station list for Home, Favorites, or Recent.
@@ -74,6 +75,11 @@ func newStationList(w *Window, showPlayedAt bool) *stationList {
 		iconCache:    w.iconCache,
 		iconLoading:  make(map[string]struct{}),
 		iconFailed:   make(map[string]struct{}),
+	}
+	if showPlayedAt {
+		// Recent composes its bounded history in one Scroll, keeping day labels
+		// outside interactive controls instead of representing them as list items.
+		return s
 	}
 	s.list = widget.NewList(
 		func() int { return len(s.entries) },
@@ -104,16 +110,18 @@ func (s *stationList) setStations(stations []radio.Station) {
 	s.list.Refresh()
 }
 
-// setRecent replaces the list with stations and their last played times.
+// setRecent sorts global history newest first and clears the previous row objects.
 func (s *stationList) setRecent(recent []storage.RecentStation) {
 	s.iconGeneration++
 	s.iconLoading = make(map[string]struct{})
 	s.iconFailed = make(map[string]struct{})
-	s.entries = make([]stationListEntry, 0, len(recent))
-	for _, item := range recent {
+	items := slices.Clone(recent)
+	slices.SortStableFunc(items, func(a, b storage.RecentStation) int { return b.PlayedAt.Compare(a.PlayedAt) })
+	s.rows = make(map[fyne.CanvasObject]*stationListRow)
+	s.entries = make([]stationListEntry, 0, len(items))
+	for _, item := range items {
 		s.entries = append(s.entries, stationListEntry{station: item.Station, playedAt: item.PlayedAt})
 	}
-	s.list.Refresh()
 }
 
 // newRow creates one row with shared artwork and favorite controls.
@@ -123,30 +131,33 @@ func (s *stationList) newRow() fyne.CanvasObject {
 		s.window.toggleFavorite(row.station)
 	})
 	row.favorite.Importance = widget.LowImportance
-	if s.showPlayedAt {
-		row.recentName = widget.NewLabelWithStyle("Station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-		row.recentName.Truncation = fyne.TextTruncateEllipsis
-		row.recentTime = widget.NewLabelWithStyle("Today, 10:24", fyne.TextAlignTrailing, fyne.TextStyle{})
-		row.recentTime.Importance = widget.LowImportance
-		content := container.NewBorder(nil, nil, nil, row.recentTime, row.recentName)
-		return s.wrapRow(row, content)
-	}
 	row.title = widget.NewLabelWithStyle("Station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.description = widget.NewLabel("Station details")
 	row.description.Importance = widget.LowImportance
 	row.description.SizeName = stationMetadataSizeName
 	row.description.Truncation = fyne.TextTruncateEllipsis
+	content := container.NewVBox(row.title, row.description)
+	if s.showPlayedAt {
+		row.description.SetText("14:37")
+		padding := theme.Size(theme.SizeNamePadding)
+		// Distribute the missing badge line above and below the text, keeping
+		// Recent rows the same height as Radio and Favorites without extra content.
+		badgeHeight := fyne.MeasureText("MP3", theme.Size(theme.SizeNameCaptionText), fyne.TextStyle{}).Height + 2*stationBadgePaddingY
+		verticalPadding := padding + (badgeHeight+padding)/2
+		content = container.New(layout.NewCustomPaddedLayout(verticalPadding, verticalPadding, padding, padding), content)
+		return s.wrapRow(row, container.NewThemeOverride(content, compactTextTheme{Theme: s.window.app.Settings().Theme()}))
+	}
 	row.codecBadge = widgets.NewBadge("MP3", theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
 	row.codecBadge.TextSize = theme.Size(theme.SizeNameCaptionText)
 	row.codecBadge.PaddingX = 8
-	row.codecBadge.PaddingY = 2
+	row.codecBadge.PaddingY = stationBadgePaddingY
 	row.bitrateBadge = widgets.NewBadge("128 kbps", theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
 	row.bitrateBadge.TextSize = theme.Size(theme.SizeNameCaptionText)
 	row.bitrateBadge.PaddingX = 8
-	row.bitrateBadge.PaddingY = 2
-	content := container.NewPadded(container.NewVBox(row.title, row.description, container.NewHBox(row.codecBadge, row.bitrateBadge)))
-	return s.wrapRow(row, container.NewThemeOverride(content, compactTextTheme{Theme: s.window.app.Settings().Theme()}))
+	row.bitrateBadge.PaddingY = stationBadgePaddingY
+	content.Add(container.NewHBox(row.codecBadge, row.bitrateBadge))
+	return s.wrapRow(row, container.NewThemeOverride(container.NewPadded(content), compactTextTheme{Theme: s.window.app.Settings().Theme()}))
 }
 
 // wrapRow adds the common icon and favorite controls around section content.
@@ -158,9 +169,6 @@ func (s *stationList) wrapRow(row *stationListRow, content fyne.CanvasObject) fy
 		favorite,
 		content,
 	)
-	if s.showPlayedAt {
-		item = container.NewVBox(item, widget.NewSeparator())
-	}
 	s.rows[item] = row
 	return item
 }
@@ -174,12 +182,11 @@ func (s *stationList) updateRow(id widget.ListItemID, object fyne.CanvasObject) 
 	entry := s.entries[id]
 	station := entry.station
 	row.station = station
-	description, codec, bitrate := homeStationDetails(station)
+	row.title.SetText(station.Name)
 	if s.showPlayedAt {
-		row.recentName.SetText(station.Name)
-		row.recentTime.SetText(recentTimestamp(entry.playedAt))
+		row.description.SetText(entry.playedAt.Local().Format("15:04"))
 	} else {
-		row.title.SetText(station.Name)
+		description, codec, bitrate := homeStationDetails(station)
 		row.description.SetText(description)
 		row.codecBadge.SetText(codec)
 		row.bitrateBadge.SetText(bitrate)
