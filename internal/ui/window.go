@@ -20,37 +20,39 @@ import (
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/widgets"
 )
 
 // Window owns the application dependencies and switches between its two views.
 type Window struct {
-	app                 fyne.App
-	window              fyne.Window
-	theme               *brandTheme
-	sectionHeader       *widget.Label
-	settingsCountryFlag *canvas.Text
-	settingsCountryName *widget.Label
-	radioPlayer         radio.Player
-	store               *storage.Store
-	settings            storage.Settings
-	directory           radiobrowser.Directory
-	iconCache           *lru.Cache[string, favicon.Icon]
-	appContent          fyne.CanvasObject
-	onboarding          *onboarding
-	home                *homeSection
-	favorites           *favoritesSection
-	recent              []storage.RecentStation
-	recentSection       *recentSection
-	playerBar           *playerWidget
-	tray                *systemTray
-	volumeMuted         bool
-	volumeBeforeMute    float64
-	selectedStation     radio.Station
-	initialStations     []radio.Station
-	done                chan struct{}
-	eventsDone          chan struct{}
-	closeOnce           sync.Once
-	closeErr            error
+	app                  fyne.App
+	window               fyne.Window
+	theme                *brandTheme
+	sectionHeader        *widget.Label
+	settingsCountryFlag  *canvas.Text
+	settingsCountryName  *widget.Label
+	settingsVersionBadge *widgets.Badge
+	radioPlayer          radio.Player
+	store                *storage.Store
+	settings             storage.Settings
+	directory            radiobrowser.Directory
+	iconCache            *lru.Cache[string, favicon.Icon]
+	appContent           fyne.CanvasObject
+	onboarding           *onboarding
+	home                 *homeSection
+	favorites            *favoritesSection
+	recent               []storage.RecentStation
+	recentSection        *recentSection
+	playerBar            *playerWidget
+	tray                 *systemTray
+	volumeMuted          bool
+	volumeBeforeMute     float64
+	selectedStation      radio.Station
+	initialStations      []radio.Station
+	done                 chan struct{}
+	eventsDone           chan struct{}
+	closeOnce            sync.Once
+	closeErr             error
 }
 
 // New creates the window and displays onboarding when no discovery country is saved.
@@ -105,6 +107,7 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		if w.favorites != nil {
 			w.favorites.refreshTheme()
 		}
+		w.refreshSettingsTheme()
 		slog.Debug("Fyne theme variant changed",
 			"variant", themeVariantName(variant),
 			"appearance", appTheme.appearance,
@@ -153,6 +156,7 @@ func (w *Window) setAppearance(appearance string) {
 	if w.favorites != nil {
 		w.favorites.refreshTheme()
 	}
+	w.refreshSettingsTheme()
 	err := w.saveSettings()
 	slog.Debug("UI appearance setting changed",
 		"appearance", appearance,

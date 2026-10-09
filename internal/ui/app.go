@@ -57,8 +57,10 @@ func newApp(w *Window) fyne.CanvasObject {
 	favorites.saved.Hide()
 	favorites.subtitle.Hide()
 	recent.subtitle.Hide()
+	settingsSubtitle := widget.NewLabel("Customize your FyneTune experience")
+	settingsSubtitle.Hide()
 	header := container.NewThemeOverride(
-		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle, recent.subtitle)),
+		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle, recent.subtitle, settingsSubtitle)),
 		compactTextTheme{Theme: w.app.Settings().Theme()},
 	)
 
@@ -100,6 +102,11 @@ func newApp(w *Window) fyne.CanvasObject {
 			recent.refresh()
 		} else {
 			recent.subtitle.Hide()
+		}
+		if index == 4 {
+			settingsSubtitle.Show()
+		} else {
+			settingsSubtitle.Hide()
 		}
 		header.Refresh()
 	}

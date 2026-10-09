@@ -118,3 +118,21 @@ func (t compactTextTheme) Size(name fyne.ThemeSizeName) float32 {
 	}
 	return t.Theme.Size(name)
 }
+
+// settingsCardTheme gives native cards a flat, rounded background while retaining
+// the application's palette and standard control spacing.
+type settingsCardTheme struct {
+	fyne.Theme
+}
+
+// Color removes card shadows and uses the theme's subtle input background.
+func (t settingsCardTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	switch name {
+	case theme.ColorNameBackground:
+		return t.Theme.Color(theme.ColorNameInputBackground, variant)
+	case theme.ColorNameShadow:
+		return color.Transparent
+	default:
+		return t.Theme.Color(name, variant)
+	}
+}
