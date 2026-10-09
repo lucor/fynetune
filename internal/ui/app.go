@@ -53,7 +53,10 @@ func newApp(w *Window) fyne.CanvasObject {
 	headerText := widget.NewLabelWithStyle("Radio", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	w.sectionHeader = headerText
 	headerText.SizeName = theme.SizeNameHeadingText
-	header := container.NewVBox(headerText, home.subtitle)
+	sectionHeader := container.NewBorder(nil, nil, nil, favorites.saved, headerText)
+	favorites.saved.Hide()
+	favorites.subtitle.Hide()
+	header := container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle)
 
 	nav := navigation.New(
 		navigation.Item{
@@ -77,6 +80,16 @@ func newApp(w *Window) fyne.CanvasObject {
 			home.subtitle.Show()
 		} else {
 			home.subtitle.Hide()
+		}
+		if index == 1 {
+			favorites.subtitle.Show()
+		} else {
+			favorites.subtitle.Hide()
+		}
+		if index == 1 {
+			favorites.saved.Show()
+		} else {
+			favorites.saved.Hide()
 		}
 		header.Refresh()
 	}
