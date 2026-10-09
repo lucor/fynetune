@@ -13,26 +13,26 @@ import (
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 )
 
-const exploreRequestLimit = 20
+const discoverRequestLimit = 20
 
-// exploreSection browses Radio Browser and shows results in the shared station list.
-type exploreSection struct {
+// discoverSection browses Radio Browser and shows results in the shared station list.
+type discoverSection struct {
 	*fyne.Container
 	window       *Window
 	rows         *stationList
 	name         *widget.Entry
 	country      *searchCountryEntry
 	countryList  *widget.List
-	countryBox   *fyne.Container
+	countryPopup *widget.PopUp
 	countryItems []Country
 	countryMatch []Country
 	countryValue Country
 	countryPrior Country
-	countryOpen  bool
 	genre        *widget.Select
 	codec        *widget.Select
 	status       *widget.Label
 	count        *widget.Label
+	subtitle     *widget.Label
 	results      *fyne.Container
 	timer        *time.Timer
 	cancel       context.CancelFunc
@@ -70,19 +70,25 @@ func (e *searchCountryEntry) TypedKey(key *fyne.KeyEvent) {
 	e.Entry.TypedKey(key)
 }
 
-// newExploreSection builds the station directory filters and result list.
-func newExploreSection(w *Window) *exploreSection {
-	s := &exploreSection{
-		window:  w,
-		rows:    newStationList(w, false),
-		status:  widget.NewLabel(""),
-		count:   widget.NewLabel(""),
-		results: container.NewStack(),
+// newDiscoverSection builds the station directory filters and result list.
+func newDiscoverSection(w *Window) *discoverSection {
+	s := &discoverSection{
+		window:   w,
+		rows:     newStationList(w, false),
+		status:   widget.NewLabel(""),
+		count:    widget.NewLabel(""),
+		subtitle: widget.NewLabel("Find radio stations from around the world"),
+		results:  container.NewStack(),
 	}
 	s.name = widget.NewEntry()
+	clear := widget.NewButtonWithIcon("", theme.CancelIcon(), func() { s.name.SetText("") })
+	clear.Importance = widget.LowImportance
+	// Configure the action before the first refresh creates the entry renderer.
+	s.name.ActionItem = clear
+	s.name.SetPlaceHolder("Discover by station name…")
+	s.name.SetIcon(theme.SearchIcon())
 	s.name.OnChanged = func(string) { s.scheduleQuery() }
 	s.country = newSearchCountryEntry()
-	s.country.SetPlaceHolder("Country")
 	s.country.onFocus = func() {
 		s.countryPrior = s.countryValue
 		s.setCountryText("")
@@ -90,16 +96,20 @@ func newExploreSection(w *Window) *exploreSection {
 	}
 	s.country.onEscape = func() {
 		s.countryValue = s.countryPrior
-		s.setCountryText(s.countryValue.Name)
+		s.setCountryText(discoverCountryLabel(s.countryValue))
 		s.hideCountryOptions()
 	}
 	s.country.OnChanged = func(query string) { s.showCountryOptions(query) }
 	s.countryList = widget.NewList(
 		func() int { return len(s.countryMatch) },
-		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func() fyne.CanvasObject {
+			label := widget.NewLabel("")
+			label.Truncation = fyne.TextTruncateEllipsis
+			return label
+		},
 		func(id widget.ListItemID, object fyne.CanvasObject) {
 			if int(id) < len(s.countryMatch) {
-				object.(*widget.Label).SetText(s.countryMatch[id].Name)
+				object.(*widget.Label).SetText(discoverCountryLabel(s.countryMatch[id]))
 			}
 		},
 	)
@@ -110,12 +120,12 @@ func newExploreSection(w *Window) *exploreSection {
 		}
 		s.countryValue = s.countryMatch[id]
 		s.countryPrior = s.countryValue
-		s.setCountryText(s.countryValue.Name)
+		s.setCountryText(discoverCountryLabel(s.countryValue))
 		s.hideCountryOptions()
 		s.scheduleQuery()
 	}
 	dropdown := widget.NewButtonWithIcon("", theme.MenuDropDownIcon(), func() {
-		if s.countryOpen {
+		if s.countryPopup.Visible() {
 			s.hideCountryOptions()
 		} else {
 			s.showCountryOptions("")
@@ -123,28 +133,31 @@ func newExploreSection(w *Window) *exploreSection {
 	})
 	dropdown.Importance = widget.LowImportance
 	s.country.ActionItem = dropdown
-	countryListContainer := container.New(searchCountryListLayout{}, s.countryList)
-	countryListContainer.Hide()
-	s.countryBox = container.NewVBox(s.country, countryListContainer)
+	s.country.SetPlaceHolder("Country")
+	s.countryPopup = widget.NewPopUp(s.countryList, w.window.Canvas())
+	s.countryPopup.Hide()
 	s.genre = widget.NewSelect([]string{"Any genre", "Pop", "Rock", "Jazz", "News", "Classical", "Electronic", "Talk", "Dance", "Oldies", "Ambient", "Alternative", "Metal", "Country", "Hip hop"}, nil)
 	s.genre.PlaceHolder = "Genre"
 	s.genre.OnChanged = func(string) { s.scheduleQuery() }
 	s.codec = widget.NewSelect([]string{"Any codec", "MP3", "AAC", "AAC+", "OGG", "Opus"}, nil)
 	s.codec.PlaceHolder = "Codec"
 	s.codec.OnChanged = func(string) { s.scheduleQuery() }
-	clear := widget.NewButtonWithIcon("", theme.CancelIcon(), func() { s.name.SetText("") })
-	clear.Importance = widget.LowImportance
-	searchBar := container.NewBorder(nil, nil, nil, clear, s.name)
-	filters := container.NewGridWithColumns(3, s.countryBox, s.genre, s.codec)
-	header := container.NewVBox(searchBar, filters, s.count, s.status)
-	s.results.Objects = []fyne.CanvasObject{container.NewCenter(widget.NewLabel("Discover by station, country, genre, or codec."))}
+	filters := container.NewGridWithColumns(3, s.country, s.genre, s.codec)
+	s.count.Importance = widget.LowImportance
+	s.status.Importance = widget.LowImportance
+	s.status.Wrapping = fyne.TextWrapWord
+	s.count.Hide()
+	s.status.Hide()
+	summary := container.NewThemeOverride(container.NewVBox(s.count, s.status),
+		compactTextTheme{Theme: w.app.Settings().Theme()})
+	header := container.NewPadded(container.NewVBox(s.name, filters, summary))
 	s.Container = container.NewBorder(header, nil, nil, nil, s.results)
 	s.loadCountries()
 	return s
 }
 
 // loadCountries fetches country options asynchronously from Radio Browser.
-func (s *exploreSection) loadCountries() {
+func (s *discoverSection) loadCountries() {
 	if s.window.directory == nil {
 		return
 	}
@@ -164,7 +177,7 @@ func (s *exploreSection) loadCountries() {
 		}
 		fyne.Do(func() {
 			s.countryItems = items
-			if s.countryOpen {
+			if s.countryPopup.Visible() {
 				s.showCountryOptions(s.country.Text)
 			}
 		})
@@ -172,14 +185,14 @@ func (s *exploreSection) loadCountries() {
 }
 
 // setCountryText changes the entry without reopening its suggestions.
-func (s *exploreSection) setCountryText(value string) {
+func (s *discoverSection) setCountryText(value string) {
 	s.country.OnChanged = nil
 	s.country.SetText(value)
 	s.country.OnChanged = func(query string) { s.showCountryOptions(query) }
 }
 
 // showCountryOptions filters and displays matching country choices.
-func (s *exploreSection) showCountryOptions(query string) {
+func (s *discoverSection) showCountryOptions(query string) {
 	s.countryMatch = s.countryMatch[:0]
 	query = strings.ToLower(strings.TrimSpace(query))
 	anyCountry := Country{Name: "Any country"}
@@ -192,27 +205,23 @@ func (s *exploreSection) showCountryOptions(query string) {
 		}
 	}
 	s.countryList.Refresh()
+	s.countryList.UnselectAll()
 	if len(s.countryMatch) == 0 {
 		s.hideCountryOptions()
 		return
 	}
-	s.countryOpen = true
-	// The list is the second child of countryBox and stays hidden until requested.
-	s.countryBox.Objects[1].Show()
-	s.countryBox.Refresh()
+	// Overlay the native list below the country field without resizing the filters.
+	s.countryPopup.Resize(fyne.NewSize(s.country.Size().Width, 220))
+	s.countryPopup.ShowAtRelativePosition(fyne.NewPos(0, s.country.Size().Height), s.country)
 }
 
 // hideCountryOptions closes the country suggestion dropdown.
-func (s *exploreSection) hideCountryOptions() {
-	s.countryOpen = false
-	if len(s.countryBox.Objects) > 1 {
-		s.countryBox.Objects[1].Hide()
-		s.countryBox.Refresh()
-	}
+func (s *discoverSection) hideCountryOptions() {
+	s.countryPopup.Hide()
 }
 
 // scheduleQuery debounces edits and cancels a request made for older filters.
-func (s *exploreSection) scheduleQuery() {
+func (s *discoverSection) scheduleQuery() {
 	s.requestID++
 	requestID := s.requestID
 	if s.timer != nil {
@@ -222,7 +231,7 @@ func (s *exploreSection) scheduleQuery() {
 		s.cancel()
 		s.cancel = nil
 	}
-	query := radiobrowser.Query{Name: strings.TrimSpace(s.name.Text), Limit: exploreRequestLimit}
+	query := radiobrowser.Query{Name: strings.TrimSpace(s.name.Text), Limit: discoverRequestLimit}
 	if s.countryValue.Code != "" {
 		query.CountryCode = s.countryValue.Code
 	}
@@ -234,22 +243,27 @@ func (s *exploreSection) scheduleQuery() {
 	}
 	if query.Name == "" && query.CountryCode == "" && query.Tag == "" && query.Codec == "" {
 		s.rows.setStations(nil)
-		s.results.Objects = []fyne.CanvasObject{container.NewCenter(widget.NewLabel("Discover by station, country, genre, or codec."))}
+		s.results.Objects = nil
 		s.results.Refresh()
 		s.count.SetText("")
+		s.count.Hide()
 		s.status.SetText("")
+		s.status.Hide()
 		return
 	}
-	s.status.SetText("Searching Radio Browser…")
+	s.count.Hide()
+	s.status.SetText("Finding stations…")
+	s.status.Show()
 	s.timer = time.AfterFunc(350*time.Millisecond, func() {
 		fyne.Do(func() { s.fetchStations(query, requestID) })
 	})
 }
 
 // fetchStations loads matching stations and applies only the latest response.
-func (s *exploreSection) fetchStations(query radiobrowser.Query, requestID uint64) {
+func (s *discoverSection) fetchStations(query radiobrowser.Query, requestID uint64) {
 	if s.window.directory == nil {
 		s.status.SetText("Station directory unavailable.")
+		s.status.Show()
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -265,45 +279,52 @@ func (s *exploreSection) fetchStations(query radiobrowser.Query, requestID uint6
 				s.rows.setStations(nil)
 				retry := widget.NewButton("Retry", func() { s.scheduleQuery() })
 				s.results.Objects = []fyne.CanvasObject{container.NewVBox(
-					container.NewCenter(widget.NewLabel("Could not load stations. Check your connection and try again.")),
+					discoverEmptyState("Could not load stations", "Check your connection and try again."),
 					container.NewCenter(retry),
 				)}
 				s.count.SetText("")
+				s.count.Hide()
 				s.status.SetText("")
+				s.status.Hide()
 				s.results.Refresh()
 				return
 			}
 			s.rows.setStations(stations)
 			if len(stations) == 0 {
-				s.results.Objects = []fyne.CanvasObject{container.NewCenter(widget.NewLabel("No stations found. Try different criteria or adjust the filters."))}
+				s.results.Objects = []fyne.CanvasObject{discoverEmptyState("No stations found", "Try a different name or adjust the filters.")}
 			} else {
 				s.results.Objects = []fyne.CanvasObject{s.rows.list}
 			}
 			s.count.SetText(stationCount(len(stations)))
+			s.count.Show()
 			s.status.SetText("")
+			s.status.Hide()
 			s.results.Refresh()
 		})
 	}()
 }
 
-type searchCountryListLayout struct{}
-
-// MinSize keeps the country suggestions usable without expanding indefinitely.
-func (searchCountryListLayout) MinSize([]fyne.CanvasObject) fyne.Size {
-	return fyne.NewSize(0, 220)
+// discoverCountryLabel displays the country flag beside its localized name.
+func discoverCountryLabel(country Country) string {
+	if country.Code == "" {
+		return country.Name
+	}
+	return countryOptionFlag(country.Code) + " " + country.Name
 }
 
-// Layout stretches the country list to the dropdown's available width.
-func (searchCountryListLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
-	for _, object := range objects {
-		object.Resize(size)
-	}
+// discoverEmptyState presents a compact message when no result list is available.
+func discoverEmptyState(title, description string) fyne.CanvasObject {
+	heading := widget.NewLabelWithStyle(title, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	detail := widget.NewLabel(description)
+	detail.Alignment = fyne.TextAlignCenter
+	detail.Wrapping = fyne.TextWrapWord
+	return container.NewCenter(container.NewVBox(widget.NewIcon(theme.SearchIcon()), heading, detail))
 }
 
 // stationCount formats a result total with the correct singular form.
 func stationCount(count int) string {
 	if count == 1 {
-		return "1 station"
+		return "1 station found"
 	}
-	return fmt.Sprintf("%d stations", count)
+	return fmt.Sprintf("%d stations found", count)
 }

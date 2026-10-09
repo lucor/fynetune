@@ -39,12 +39,12 @@ func newApp(w *Window) fyne.CanvasObject {
 	w.favorites = favorites
 	recent := newRecentSection(w)
 	w.recentSection = recent
-	explore := newExploreSection(w)
+	discover := newDiscoverSection(w)
 	pages := []fyne.CanvasObject{
 		home.Container,
 		favorites.Container,
 		recent.Container,
-		explore.Container,
+		discover.Container,
 		w.settingsPage(),
 	}
 	content := container.NewStack(pages[0])
@@ -57,10 +57,11 @@ func newApp(w *Window) fyne.CanvasObject {
 	favorites.saved.Hide()
 	favorites.subtitle.Hide()
 	recent.subtitle.Hide()
+	discover.subtitle.Hide()
 	settingsSubtitle := widget.NewLabel("Customize your FyneTune experience")
 	settingsSubtitle.Hide()
 	header := container.NewThemeOverride(
-		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle, recent.subtitle, settingsSubtitle)),
+		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle, recent.subtitle, discover.subtitle, settingsSubtitle)),
 		compactTextTheme{Theme: w.app.Settings().Theme()},
 	)
 
@@ -77,7 +78,7 @@ func newApp(w *Window) fyne.CanvasObject {
 		navigation.Item{Icon: theme.SearchIcon()},
 		navigation.Item{Icon: theme.SettingsIcon()},
 	)
-	headerTitles := []string{"Radio", "Favorites", "Recent", "Explore", "Settings"}
+	headerTitles := []string{"Radio", "Favorites", "Recent", "Discover", "Settings"}
 	nav.OnSelected = func(index int) {
 		content.Objects = []fyne.CanvasObject{pages[index]}
 		content.Refresh()
@@ -107,6 +108,11 @@ func newApp(w *Window) fyne.CanvasObject {
 			settingsSubtitle.Show()
 		} else {
 			settingsSubtitle.Hide()
+		}
+		if index == 3 {
+			discover.subtitle.Show()
+		} else {
+			discover.subtitle.Hide()
 		}
 		header.Refresh()
 	}
