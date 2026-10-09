@@ -12,12 +12,13 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hashicorp/golang-lru/v2"
 	"go.lucor.dev/fynetune/internal/favicon"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/widgets"
 	xdraw "golang.org/x/image/draw"
 )
 
@@ -49,15 +50,15 @@ type stationList struct {
 
 // stationListRow contains the reusable widgets for one station.
 type stationListRow struct {
-	station     radio.Station
-	artwork     *canvas.Image
-	favorite    *widget.Button
-	text        *widget.RichText
-	title       *widget.TextSegment
-	description *widget.TextSegment
-	technical   *widget.TextSegment
-	recentName  *widget.Label
-	recentTime  *widget.Label
+	station      radio.Station
+	artwork      *canvas.Image
+	favorite     *widget.Button
+	title        *widget.Label
+	description  *widget.Label
+	codecBadge   *widgets.Badge
+	bitrateBadge *widgets.Badge
+	recentName   *widget.Label
+	recentTime   *widget.Label
 }
 
 // newStationList builds the shared station list for Home, Favorites, or Recent.
@@ -122,9 +123,6 @@ func (s *stationList) newRow() fyne.CanvasObject {
 		s.window.toggleFavorite(row.station)
 	})
 	row.favorite.Importance = widget.LowImportance
-	descriptionStyle := widget.RichTextStyleInline
-	descriptionStyle.ColorName = stationMetadataColorName
-	descriptionStyle.SizeName = stationMetadataSizeName
 	if s.showPlayedAt {
 		row.recentName = widget.NewLabelWithStyle("Station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 		row.recentName.Truncation = fyne.TextTruncateEllipsis
@@ -133,13 +131,22 @@ func (s *stationList) newRow() fyne.CanvasObject {
 		content := container.NewBorder(nil, nil, nil, row.recentTime, row.recentName)
 		return s.wrapRow(row, content)
 	}
-	row.title = &widget.TextSegment{Text: "Station\n", Style: widget.RichTextStyleStrong}
-	row.description = &widget.TextSegment{Text: "Station details\n", Style: descriptionStyle}
-	row.technical = &widget.TextSegment{Text: "MP3 · 128 kbps", Style: descriptionStyle}
-	row.text = widget.NewRichText(row.title, row.description, row.technical)
-	row.text.Truncation = fyne.TextTruncateEllipsis
-	content := container.NewVBox(layout.NewSpacer(), row.text, layout.NewSpacer())
-	return s.wrapRow(row, content)
+	row.title = widget.NewLabelWithStyle("Station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	row.title.Truncation = fyne.TextTruncateEllipsis
+	row.description = widget.NewLabel("Station details")
+	row.description.Importance = widget.LowImportance
+	row.description.SizeName = stationMetadataSizeName
+	row.description.Truncation = fyne.TextTruncateEllipsis
+	row.codecBadge = widgets.NewBadge("MP3", theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+	row.codecBadge.TextSize = theme.Size(theme.SizeNameCaptionText)
+	row.codecBadge.PaddingX = 8
+	row.codecBadge.PaddingY = 2
+	row.bitrateBadge = widgets.NewBadge("128 kbps", theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+	row.bitrateBadge.TextSize = theme.Size(theme.SizeNameCaptionText)
+	row.bitrateBadge.PaddingX = 8
+	row.bitrateBadge.PaddingY = 2
+	content := container.NewPadded(container.NewVBox(row.title, row.description, container.NewHBox(row.codecBadge, row.bitrateBadge)))
+	return s.wrapRow(row, container.NewThemeOverride(content, compactTextTheme{Theme: s.window.app.Settings().Theme()}))
 }
 
 // wrapRow adds the common icon and favorite controls around section content.
@@ -167,15 +174,27 @@ func (s *stationList) updateRow(id widget.ListItemID, object fyne.CanvasObject) 
 	entry := s.entries[id]
 	station := entry.station
 	row.station = station
-	description, technical := homeStationDetails(station)
+	description, codec, bitrate := homeStationDetails(station)
 	if s.showPlayedAt {
 		row.recentName.SetText(station.Name)
 		row.recentTime.SetText(recentTimestamp(entry.playedAt))
 	} else {
-		row.title.Text = station.Name + "\n"
-		row.description.Text = description + "\n"
-		row.technical.Text = technical
-		row.text.Refresh()
+		row.title.SetText(station.Name)
+		row.description.SetText(description)
+		row.codecBadge.SetText(codec)
+		row.bitrateBadge.SetText(bitrate)
+		row.codecBadge.SetColors(theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+		row.bitrateBadge.SetColors(theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+		if codec == "" {
+			row.codecBadge.Hide()
+		} else {
+			row.codecBadge.Show()
+		}
+		if bitrate == "" {
+			row.bitrateBadge.Hide()
+		} else {
+			row.bitrateBadge.Show()
+		}
 	}
 	s.setStationArtwork(row, station)
 	favoriteIcon := homeFavoriteOutline

@@ -301,8 +301,8 @@ func (w *Window) updateTray() {
 		return
 	}
 	status := "Not playing"
-	if w.playerBar != nil && w.playerBar.trackText != nil {
-		status = w.playerBar.trackText.Text
+	if w.playerBar != nil && w.playerBar.track != nil {
+		status = w.playerBar.track.Text
 	}
 	w.tray.update(w.selectedStation, status, w.radioPlayer.State())
 }

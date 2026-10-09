@@ -132,8 +132,8 @@ func (h *homeSection) fetch(query radiobrowser.Query, popular bool, status strin
 	}()
 }
 
-// homeStationDetails formats the description and stream details shown in Home.
-func homeStationDetails(station radio.Station) (description, technical string) {
+// homeStationDetails formats the station description, codec, and bitrate.
+func homeStationDetails(station radio.Station) (description, codec, bitrate string) {
 	parts := make([]string, 0, 2)
 	if len(station.Tags) > 0 && strings.TrimSpace(station.Tags[0]) != "" {
 		parts = append(parts, strings.TrimSpace(station.Tags[0]))
@@ -145,16 +145,16 @@ func homeStationDetails(station radio.Station) (description, technical string) {
 		parts = append(parts, homeStationHost(station.URL))
 	}
 	description = strings.Join(parts, " · ")
-	technicalParts := make([]string, 0, 2)
-	codec := strings.TrimSpace(station.Codec)
+	codec = strings.TrimSpace(station.Codec)
 	if codec != "" && !strings.EqualFold(codec, "unknown") {
-		technicalParts = append(technicalParts, strings.ToUpper(codec))
+		codec = strings.ToUpper(codec)
+	} else {
+		codec = ""
 	}
 	if station.Bitrate > 0 {
-		technicalParts = append(technicalParts, fmt.Sprintf("%d kbps", station.Bitrate))
+		bitrate = fmt.Sprintf("%d kbps", station.Bitrate)
 	}
-	technical = strings.Join(technicalParts, " · ")
-	return description, technical
+	return description, codec, bitrate
 }
 
 // homeStationHost returns the stream host when station metadata is unavailable.

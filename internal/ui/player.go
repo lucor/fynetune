@@ -15,7 +15,6 @@ import (
 const (
 	playerControlSize     = 44
 	playerControlIconSize = 20
-	playerTextGap         = 2
 )
 
 // playerWidget is the persistent compact player shown above the app navigation.
@@ -23,8 +22,7 @@ type playerWidget struct {
 	*fyne.Container
 	artwork   *canvas.Image
 	title     *widget.Label
-	track     *widget.RichText
-	trackText *widget.TextSegment
+	track     *widget.Label
 	play      *widget.Button
 	volume    *widget.Slider
 	volumePct *widget.Label
@@ -54,18 +52,19 @@ func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVo
 
 	title := widget.NewLabelWithStyle("Choose a station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title.Truncation = fyne.TextTruncateEllipsis
-	trackStyle := widget.RichTextStyleInline
-	trackStyle.ColorName = stationMetadataColorName
-	trackStyle.SizeName = stationMetadataSizeName
-	trackText := &widget.TextSegment{Text: "Not playing", Style: trackStyle}
-	track := widget.NewRichText(trackText)
+	track := widget.NewLabel("Not playing")
+	track.Importance = widget.LowImportance
+	track.SizeName = stationMetadataSizeName
 	track.Truncation = fyne.TextTruncateEllipsis
 	play := widget.NewButtonWithIcon("", theme.MediaPlayIcon(), onToggle)
 	play.Importance = widget.HighImportance
 	play.Disable()
 
-	playerText := container.New(layout.NewCustomPaddedVBoxLayout(playerTextGap), title, track)
-	centeredText := container.NewVBox(layout.NewSpacer(), playerText, layout.NewSpacer())
+	playerText := container.NewPadded(container.NewVBox(title, track))
+	centeredText := container.NewThemeOverride(
+		container.NewVBox(layout.NewSpacer(), playerText, layout.NewSpacer()),
+		compactTextTheme{Theme: baseTheme},
+	)
 	playControl := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(playerControlSize),
 		container.NewThemeOverride(play, playerControlTheme{Theme: baseTheme})))
 	content := container.NewBorder(
@@ -78,7 +77,6 @@ func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVo
 		artwork:   artwork,
 		title:     title,
 		track:     track,
-		trackText: trackText,
 		play:      play,
 		volume:    widget.NewSlider(0, 1),
 		volumePct: widget.NewLabel(""),
@@ -138,8 +136,7 @@ func (p *playerWidget) setPlayback(station radio.Station, status string, playing
 		p.title.SetText(station.Name)
 		p.play.Enable()
 	}
-	p.trackText.Text = status
-	p.track.Refresh()
+	p.track.SetText(status)
 	if playing {
 		p.play.SetIcon(theme.MediaStopIcon())
 	} else {

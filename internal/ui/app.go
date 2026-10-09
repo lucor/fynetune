@@ -56,7 +56,10 @@ func newApp(w *Window) fyne.CanvasObject {
 	sectionHeader := container.NewBorder(nil, nil, nil, favorites.saved, headerText)
 	favorites.saved.Hide()
 	favorites.subtitle.Hide()
-	header := container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle)
+	header := container.NewThemeOverride(
+		container.NewPadded(container.NewVBox(sectionHeader, home.subtitle, favorites.subtitle)),
+		compactTextTheme{Theme: w.app.Settings().Theme()},
+	)
 
 	nav := navigation.New(
 		navigation.Item{
