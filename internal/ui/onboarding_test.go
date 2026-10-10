@@ -8,10 +8,86 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
+
+// TestSettingsCountryChange keeps the current view and data until loading succeeds.
+func TestSettingsCountryChange(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		name := "success"
+		if fail {
+			name = "network error"
+		}
+		t.Run(name, func(t *testing.T) {
+			base := test.NewTempApp(t)
+			base.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
+			driver := &startupTestDriver{Driver: base.Driver(), completed: make(chan func(), 1)}
+			app := &startupTestApp{App: base, driver: driver}
+			fyne.SetCurrentApp(app)
+			t.Cleanup(func() { fyne.SetCurrentApp(base) })
+			gate := make(chan struct{})
+			t.Cleanup(func() {
+				select {
+				case <-gate:
+				default:
+					close(gate)
+				}
+			})
+			directory := &startupTestDirectory{gate: gate, stations: []radio.Station{{ID: "new"}}}
+			if fail {
+				directory.err = errors.New("network unavailable")
+			}
+			w := &Window{app: app, window: test.NewTempWindow(t, nil), directory: directory, store: storage.New(app)}
+			w.settings.DiscoveryCountry = "@US"
+			if err := w.store.SaveSettings(w.settings); err != nil {
+				t.Fatal(err)
+			}
+			w.home = newHomeSection(w)
+			w.home.setStations([]radio.Station{{ID: "previous"}})
+			items := make([]navigation.Item, 5)
+			for i := range items {
+				items[i] = navigation.Item{Icon: homeBrandIcon}
+			}
+			w.bottomNavigation = navigation.New(items...)
+			w.bottomNavigation.Select(4)
+			w.appContent = widget.NewLabel("App")
+			picker := widget.NewLabel("Country picker")
+			w.setContent(picker)
+			w.window.Resize(fyne.NewSize(480, 800))
+			w.window.Show()
+			o := &onboarding{window: w, fromSettings: true, selected: Country{Code: "IT", Name: "Italy"}}
+			w.onboarding = o
+			o.startCountrySetup("IT")
+			if w.window.Content() != picker || o.loadingDialog == nil {
+				t.Fatal("country loading must use a modal over the current view")
+			}
+			if w.settings.DiscoveryCountry != "@US" || w.home.rows.entries[0].station.ID != "previous" {
+				t.Fatal("loading must preserve the current country and stations")
+			}
+			o.startCountrySetup("IT") // The modal also prevents a second loading action.
+			close(gate)
+			waitStartup(t, driver.completed)
+			if directory.calls.Load() != 1 {
+				t.Fatal("country change must fetch once")
+			}
+			saved, err := w.store.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fail {
+				if saved.DiscoveryCountry != "@US" || w.settings.DiscoveryCountry != "@US" || w.home.rows.entries[0].station.ID != "previous" || w.window.Content() != picker {
+					t.Fatal("failed country change must preserve the saved country, list, and picker")
+				}
+			} else if saved.DiscoveryCountry != "@IT" || w.home.rows.entries[0].station.ID != "new" || w.window.Content() != w.appContent || w.bottomNavigation.Selected != 4 {
+				t.Fatal("successful country change must save the new country, update Radio, and stay in Settings")
+			}
+		})
+	}
+}
 
 func TestCountryPickerRequiresExplicitSelection(t *testing.T) {
 	_, onboarding := newOnboardingTestWindow(t)
@@ -78,7 +154,7 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	app.Settings().SetTheme(brandTheme{Theme: theme.LightTheme()})
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
-	w := &Window{window: window, store: storage.New(app)}
+	w := &Window{app: app, window: window, store: storage.New(app)}
 	o := &onboarding{window: w, pendingCode: "IT", suggested: Country{Code: "IT", Name: "Italy"}, selected: Country{Code: "IT", Name: "Italy"}}
 	w.onboarding = o
 	o.showCountryLoading()
@@ -103,6 +179,12 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	settings, err := w.store.Load()
 	if err != nil || settings.DiscoveryCountry != "@IT" {
 		t.Fatalf("saved country = %q, error = %v", settings.DiscoveryCountry, err)
+	}
+	query, popular := radioStationQuery("@IT")
+	var cached []radio.Station
+	result, err := cache.New(app.Cache()).Get(radioStationCacheKey(query, popular), radioCacheTTL, &cached)
+	if err != nil || !result.Fresh || len(cached) != 0 {
+		t.Fatal("successful onboarding must cache even an empty station list for the next startup")
 	}
 
 	if window.Content() != loadingContent {

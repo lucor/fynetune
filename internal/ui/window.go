@@ -132,17 +132,13 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		window.SetCloseIntercept(func() { window.Hide() })
 	}
 
-	initialContent := w.appContent
+	window.Resize(fyne.NewSize(480, 800))
 	if settings.DiscoveryCountry == "" {
 		w.onboarding = newOnboarding(w)
-		initialContent = w.onboarding.welcomeScreen()
-	}
-	window.Resize(fyne.NewSize(480, 800))
-	w.setContent(initialContent)
-	if w.onboarding != nil {
+		w.setContent(w.onboarding.welcomeScreen())
 		w.onboarding.loadCountries()
-	} else if w.home != nil {
-		w.home.loadPopular()
+	} else {
+		w.showStartup()
 	}
 	w.backfillSavedCountryCodes()
 	go w.events()
@@ -219,10 +215,11 @@ func (w *Window) changeCountry() {
 	o.countryActivity = widget.NewActivity()
 	o.countryActivity.Start()
 	w.onboarding = o
-	w.setContent(container.NewCenter(container.NewVBox(
-		o.countryActivity,
+	o.loadingDialog = dialog.NewCustomWithoutButtons("Change country", container.NewVBox(
 		widget.NewLabel("Loading countries…"),
-	)))
+		container.NewCenter(o.countryActivity),
+	), w.window)
+	o.loadingDialog.Show()
 	o.loadCountries()
 }
 
@@ -289,8 +286,6 @@ func (w *Window) showApp() {
 	}
 	if w.initialStations != nil {
 		w.home.setStations(w.initialStations)
-	} else {
-		w.home.loadPopular()
 	}
 }
 

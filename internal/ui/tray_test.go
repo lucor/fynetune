@@ -25,7 +25,12 @@ func TestTrayPlaybackAfterRestart(t *testing.T) {
 		{name: "automatic playback", selected: recent.ID, autoPlay: true, want: recent},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			app := &trayTestApp{App: test.NewTempApp(t)}
+			base := test.NewTempApp(t)
+			driver := &startupTestDriver{Driver: base.Driver(), completed: make(chan func(), 1)}
+			runtime := &startupTestApp{App: base, driver: driver}
+			fyne.SetCurrentApp(runtime)
+			t.Cleanup(func() { fyne.SetCurrentApp(base) })
+			app := &trayTestApp{App: runtime}
 			store := storage.New(app)
 			if err := store.SaveStations([]radio.Station{favorite}); err != nil {
 				t.Fatal(err)
@@ -40,6 +45,7 @@ func TestTrayPlaybackAfterRestart(t *testing.T) {
 			}
 			player := &trayTestPlayer{events: make(chan radio.Event)}
 			window := New(app, player, nil)
+			waitStartup(t, driver.completed)
 			t.Cleanup(func() { _ = window.Close() })
 			if app.menu == nil || app.icon == nil || app.trayWindowSet {
 				t.Fatal("tray menu and icon must be registered without assigning a tray window")

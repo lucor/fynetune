@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/ui/assets/icons"
@@ -48,6 +50,7 @@ type onboarding struct {
 	loadSteps       []*onboardingStep
 	loadError       *widget.Label
 	countryActivity *widget.Activity
+	loadingDialog   dialog.Dialog
 }
 
 // countryRow keeps the standard list row objects used to display a country.
@@ -253,6 +256,10 @@ func (o *onboarding) setCountries(countries []radiobrowser.Country, err error) {
 		o.countryActivity.Stop()
 		o.countryActivity = nil
 	}
+	if o.loadingDialog != nil {
+		o.loadingDialog.Hide()
+		o.loadingDialog = nil
+	}
 	if err != nil {
 		if o.fromSettings {
 			o.window.onboarding = nil
@@ -308,30 +315,24 @@ func (o *onboarding) setCountries(countries []radiobrowser.Country, err error) {
 	}
 }
 
-// startCountrySetup loads stations before completing the initial country setup.
+// startCountrySetup loads stations before saving the country, using a modal in Settings.
 func (o *onboarding) startCountrySetup(code string) {
 	w := o.window
-	if o.fromSettings {
-		if code == "" {
-			w.settings.DiscoveryCountry = "*"
-		} else {
-			w.settings.DiscoveryCountry = "@" + strings.ToUpper(code)
-		}
-		if err := w.store.SaveSettings(w.settings); err != nil {
-			dialog.ShowError(err, w.window)
-			return
-		}
-		w.onboarding = nil
-		w.setContent(w.appContent)
-		w.refreshSettingsCountry()
-		if w.home != nil {
-			w.home.subtitle.SetText(homeSubtitle(w.settings.DiscoveryCountry))
-			w.home.loadPopular()
-		}
+	if o.loadingDialog != nil {
 		return
 	}
 	o.pendingCode = strings.ToUpper(code)
-	o.showCountryLoading()
+	if o.fromSettings {
+		o.loadActivity = widget.NewActivity()
+		o.loadingDialog = dialog.NewCustomWithoutButtons("Change country", container.NewVBox(
+			widget.NewLabel("Loading stations for "+o.loadingCountryName()+"…"),
+			container.NewCenter(o.loadActivity),
+		), w.window)
+		o.loadingDialog.Show()
+		o.loadActivity.Start()
+	} else {
+		o.showCountryLoading()
+	}
 	if w.directory == nil {
 		o.finishCountrySetup(nil, errors.New("station directory unavailable"))
 		return
@@ -339,11 +340,18 @@ func (o *onboarding) startCountrySetup(code string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), countrySetupTimeout)
 		defer cancel()
-		query := radiobrowser.Query{Limit: 20}
+		region := "*"
 		if code != "" {
-			query.CountryCode = strings.ToUpper(code)
+			region = "@" + strings.ToUpper(code)
 		}
-		stations, err := w.directory.Search(ctx, query)
+		query, popular := radioStationQuery(region)
+		var stations []radio.Station
+		var err error
+		if popular {
+			stations, err = w.directory.Popular(ctx, query.Limit)
+		} else {
+			stations, err = w.directory.Search(ctx, query)
+		}
 		fyne.Do(func() { o.finishCountrySetup(stations, err) })
 	}()
 }
@@ -418,10 +426,36 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 				stations = []radio.Station{}
 			}
 			w.initialStations = stations
+			query, popular := radioStationQuery(settings.DiscoveryCountry)
+			if cacheErr := cache.New(w.app.Cache()).Set(radioStationCacheKey(query, popular), stations); cacheErr != nil {
+				slog.Warn("could not cache radio stations", "error", cacheErr)
+			}
 		}
 	}
 	if o.loadActivity != nil {
 		o.loadActivity.Stop()
+	}
+	if o.loadingDialog != nil {
+		o.loadingDialog.Hide()
+		o.loadingDialog = nil
+	}
+	if o.fromSettings {
+		if err != nil {
+			retry := dialog.NewConfirm("Could not change country", "Please try again.", func(confirmed bool) {
+				if confirmed {
+					o.startCountrySetup(o.pendingCode)
+				}
+			}, w.window)
+			retry.SetConfirmText("Retry")
+			retry.Show()
+			return
+		}
+		w.home.subtitle.SetText(homeSubtitle(w.settings.DiscoveryCountry))
+		w.home.setStations(stations)
+		w.refreshSettingsCountry()
+		w.onboarding = nil
+		w.setContent(w.appContent)
+		return
 	}
 	if o.loadActivityBox != nil {
 		o.loadActivityBox.Hide()
