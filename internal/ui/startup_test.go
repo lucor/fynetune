@@ -58,7 +58,7 @@ func TestStartupStations(t *testing.T) {
 			query, popular := radioStationQuery("*")
 			key := radioStationCacheKey(query, popular)
 			if tc.cached {
-				seedStartupCache(t, app.Cache(), key, time.Now().Add(-tc.age))
+				seedCacheRecord(t, app.Cache(), key, time.Now().Add(-tc.age), []radio.Station{{ID: "cached", Name: "Cached station"}})
 			}
 			w.showStartup()
 			fresh := tc.cached && tc.age < radioCacheTTL
@@ -112,13 +112,13 @@ func TestStartupStations(t *testing.T) {
 	}
 }
 
-// seedStartupCache writes a dated record through the same backend used by the app.
-func seedStartupCache(t *testing.T, backend fyne.Cache, key string, updated time.Time) {
+// seedCacheRecord writes a dated record through the same backend used by the app.
+func seedCacheRecord(t *testing.T, backend fyne.Cache, key string, updated time.Time, value any) {
 	t.Helper()
 	data, err := json.Marshal(struct {
-		UpdatedAt time.Time       `json:"updated_at"`
-		Value     []radio.Station `json:"value"`
-	}{updated, []radio.Station{{ID: "cached", Name: "Cached station"}}})
+		UpdatedAt time.Time `json:"updated_at"`
+		Value     any       `json:"value"`
+	}{updated, value})
 	if err != nil {
 		t.Fatal(err)
 	}

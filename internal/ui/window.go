@@ -40,6 +40,7 @@ type Window struct {
 	store                *storage.Store
 	settings             storage.Settings
 	directory            radiobrowser.Directory
+	countriesMu          sync.Mutex
 	iconCache            *lru.Cache[string, favicon.Icon]
 	appContent           fyne.CanvasObject
 	onboarding           *onboarding
@@ -212,14 +213,19 @@ func (w *Window) changeCountry() {
 	}
 	o := newOnboarding(w)
 	o.fromSettings = true
-	o.countryActivity = widget.NewActivity()
-	o.countryActivity.Start()
 	w.onboarding = o
+	countries, result := w.cachedCountries()
+	if result.Fresh {
+		o.setCountries(countries, nil)
+		return
+	}
+	o.countryActivity = widget.NewActivity()
 	o.loadingDialog = dialog.NewCustomWithoutButtons("Change country", container.NewVBox(
 		widget.NewLabel("Loading countries…"),
 		container.NewCenter(o.countryActivity),
 	), w.window)
 	o.loadingDialog.Show()
+	o.countryActivity.Start()
 	o.loadCountries()
 }
 
@@ -504,7 +510,7 @@ func (w *Window) backfillSavedCountryCodes() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		countries, err := w.directory.Countries(ctx)
+		countries, err := w.loadCountries(ctx)
 		if err != nil {
 			slog.Warn("could not update saved station country codes", "error", err)
 			return

@@ -1,18 +1,75 @@
 package ui
 
 import (
+	"context"
+	"errors"
+	"log/slog"
 	"strings"
+	"time"
 
+	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
 )
 
+const countryCacheTTL = 7 * 24 * time.Hour
+
+const countryCacheKey = "radio-browser-countries"
+
 // Country is the UI representation of a country, with a stable ISO code and display name.
 type Country struct {
 	Code string
 	Name string
+}
+
+// loadCountries shares the persistent country list across the app's screens.
+// The lock serializes cache reads and refreshes; a failed refresh preserves stale data.
+// Callers provide a request deadline and run this method outside the UI thread.
+func (w *Window) loadCountries(ctx context.Context) ([]radiobrowser.Country, error) {
+	w.countriesMu.Lock()
+	defer w.countriesMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cached, result := w.cachedCountries()
+	if result.Fresh {
+		return cached, nil
+	}
+	var countries []radiobrowser.Country
+	var err error
+	if w.directory == nil {
+		err = errors.New("station directory unavailable")
+	} else {
+		countries, err = w.directory.Countries(ctx)
+	}
+	// Explicit cancellation aborts the action; a network timeout can still use stale data.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil, context.Canceled
+	}
+	if err != nil {
+		if result.Found {
+			slog.Debug("could not refresh cached countries", "error", err)
+			return cached, nil
+		}
+		return nil, err
+	}
+	if err := cache.New(w.app.Cache()).Set(countryCacheKey, countries); err != nil {
+		slog.Warn("could not cache countries", "error", err)
+	}
+	return countries, nil
+}
+
+// cachedCountries reads the local list; an unreadable record is treated as a cache miss.
+func (w *Window) cachedCountries() ([]radiobrowser.Country, cache.Result) {
+	var countries []radiobrowser.Country
+	result, err := cache.New(w.app.Cache()).Get(countryCacheKey, countryCacheTTL, &countries)
+	if err != nil {
+		slog.Warn("could not read cached countries", "error", err)
+		return nil, cache.Result{}
+	}
+	return countries, result
 }
 
 // discoveryCountry turns a saved region preference into a displayable country.

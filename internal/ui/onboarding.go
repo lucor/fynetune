@@ -77,7 +77,7 @@ func newOnboarding(w *Window) *onboarding {
 	return &onboarding{window: w, suggestedCode: systemLocaleCountryCode()}
 }
 
-// loadCountries fetches the country list while the welcome view is displayed.
+// loadCountries reads cached or fetched countries while the welcome view is displayed.
 func (o *onboarding) loadCountries() {
 	if o.window.directory == nil {
 		return
@@ -85,7 +85,7 @@ func (o *onboarding) loadCountries() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), countrySetupTimeout)
 		defer cancel()
-		countries, err := o.window.directory.Countries(ctx)
+		countries, err := o.window.loadCountries(ctx)
 		fyne.Do(func() { o.setCountries(countries, err) })
 	}()
 }

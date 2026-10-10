@@ -156,7 +156,7 @@ func newDiscoverSection(w *Window) *discoverSection {
 	return s
 }
 
-// loadCountries fetches country options asynchronously from Radio Browser.
+// loadCountries reads cached or fetched country options outside the UI thread.
 func (s *discoverSection) loadCountries() {
 	if s.window.directory == nil {
 		return
@@ -164,7 +164,7 @@ func (s *discoverSection) loadCountries() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		countries, err := s.window.directory.Countries(ctx)
+		countries, err := s.window.loadCountries(ctx)
 		if err != nil {
 			return
 		}
