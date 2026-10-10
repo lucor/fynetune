@@ -1,13 +1,16 @@
 package ui
 
 import (
+	"errors"
 	"testing"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
+	"go.lucor.dev/fynetune/internal/storage"
 )
 
 func TestCountryPickerRequiresExplicitSelection(t *testing.T) {
@@ -75,8 +78,8 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	app.Settings().SetTheme(brandTheme{Theme: theme.LightTheme()})
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
-	w := &Window{window: window}
-	o := &onboarding{window: w, suggested: Country{Code: "IT", Name: "Italy"}, selected: Country{Code: "IT", Name: "Italy"}}
+	w := &Window{window: window, store: storage.New(app)}
+	o := &onboarding{window: w, pendingCode: "IT", suggested: Country{Code: "IT", Name: "Italy"}, selected: Country{Code: "IT", Name: "Italy"}}
 	w.onboarding = o
 	o.showCountryLoading()
 	window.Show()
@@ -94,6 +97,13 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	}
 
 	o.finishCountrySetup(nil, nil)
+	if w.initialStations == nil {
+		t.Fatal("an empty successful response must be ready without another station request")
+	}
+	settings, err := w.store.Load()
+	if err != nil || settings.DiscoveryCountry != "@IT" {
+		t.Fatalf("saved country = %q, error = %v", settings.DiscoveryCountry, err)
+	}
 
 	if window.Content() != loadingContent {
 		t.Fatal("finishing station loading should keep the same onboarding screen")
@@ -112,6 +122,39 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	}
 	if got, want := o.loadSteps[2].label.Text, "Radio experience ready"; got != want {
 		t.Fatalf("final status = %q, want %q", got, want)
+	}
+}
+
+// TestOnboardingFailedSetup preserves existing data and offers retry instead of Continue.
+func TestOnboardingFailedSetup(t *testing.T) {
+	app := test.NewTempApp(t)
+	w := &Window{window: test.NewTempWindow(t, nil), store: storage.New(app)}
+	w.settings.DiscoveryCountry = "@US"
+	w.initialStations = []radio.Station{{ID: "previous"}}
+	if err := w.store.SaveSettings(w.settings); err != nil {
+		t.Fatal(err)
+	}
+	o := &onboarding{window: w, pendingCode: "IT", selected: Country{Code: "IT", Name: "Italy"}}
+	w.onboarding = o
+	o.showCountryLoading()
+	o.finishCountrySetup(nil, errors.New("network unavailable"))
+	if o.loadContinue.Text != "Retry" || !o.loadContinueBox.Visible() {
+		t.Fatal("failed setup must offer Retry instead of Continue")
+	}
+	if !o.loadError.Visible() || o.loadActivityBox.Visible() {
+		t.Fatal("failed setup must show its error and stop the loading indicator")
+	}
+	settings, err := w.store.Load()
+	if err != nil || settings.DiscoveryCountry != "@US" || w.settings.DiscoveryCountry != "@US" {
+		t.Fatal("failed setup must preserve the previous country")
+	}
+	if len(w.initialStations) != 1 || w.initialStations[0].ID != "previous" {
+		t.Fatal("failed setup must preserve the previous stations")
+	}
+	// With no directory, retry must remain in onboarding and fail again safely.
+	test.Tap(o.loadContinue)
+	if w.onboarding != o || o.loadContinue.Text != "Retry" {
+		t.Fatal("retry must keep onboarding active until setup succeeds")
 	}
 }
 

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ const countrySetupTimeout = 12 * time.Second
 type onboarding struct {
 	window          *Window
 	fromSettings    bool
+	pendingCode     string
 	suggestedCode   string
 	suggested       Country
 	selected        Country
@@ -306,19 +308,19 @@ func (o *onboarding) setCountries(countries []radiobrowser.Country, err error) {
 	}
 }
 
-// startCountrySetup saves the country, shows the loading screen, and fetches stations.
+// startCountrySetup loads stations before completing the initial country setup.
 func (o *onboarding) startCountrySetup(code string) {
 	w := o.window
-	if code == "" {
-		w.settings.DiscoveryCountry = "*"
-	} else {
-		w.settings.DiscoveryCountry = "@" + strings.ToUpper(code)
-	}
-	if err := w.store.SaveSettings(w.settings); err != nil {
-		dialog.ShowError(err, w.window)
-		return
-	}
 	if o.fromSettings {
+		if code == "" {
+			w.settings.DiscoveryCountry = "*"
+		} else {
+			w.settings.DiscoveryCountry = "@" + strings.ToUpper(code)
+		}
+		if err := w.store.SaveSettings(w.settings); err != nil {
+			dialog.ShowError(err, w.window)
+			return
+		}
 		w.onboarding = nil
 		w.setContent(w.appContent)
 		w.refreshSettingsCountry()
@@ -328,9 +330,10 @@ func (o *onboarding) startCountrySetup(code string) {
 		}
 		return
 	}
+	o.pendingCode = strings.ToUpper(code)
 	o.showCountryLoading()
 	if w.directory == nil {
-		o.finishCountrySetup(nil, nil)
+		o.finishCountrySetup(nil, errors.New("station directory unavailable"))
 		return
 	}
 	go func() {
@@ -395,11 +398,27 @@ func (o *onboarding) showCountryLoading() {
 	o.loadActivity.Start()
 }
 
-// finishCountrySetup keeps the fetched stations ready and enables continuing to the app.
+// finishCountrySetup saves a successful setup or offers a retry without changing settings.
 func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 	w := o.window
 	if w.onboarding != o {
 		return
+	}
+	if err == nil {
+		settings := w.settings
+		settings.DiscoveryCountry = "*"
+		if o.pendingCode != "" {
+			settings.DiscoveryCountry = "@" + o.pendingCode
+		}
+		err = w.store.SaveSettings(settings)
+		if err == nil {
+			w.settings = settings
+			// An empty successful response is ready too; nil means setup has not completed.
+			if stations == nil {
+				stations = []radio.Station{}
+			}
+			w.initialStations = stations
+		}
 	}
 	if o.loadActivity != nil {
 		o.loadActivity.Stop()
@@ -409,15 +428,19 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 	}
 	if err != nil {
 		if len(o.loadSteps) > 0 {
-			o.loadSteps[0].set(theme.ErrorIcon(), "Station request failed", theme.ColorNameError)
+			o.loadSteps[0].set(theme.ErrorIcon(), "Setup failed", theme.ColorNameError)
 		}
 		if o.loadError != nil {
-			o.loadError.SetText("Station list unavailable. You can try again later.")
+			o.loadError.SetText("Could not complete setup. Please try again.")
 			o.loadError.Show()
 		}
 		if o.loadDescription != nil {
-			o.loadDescription.Segments = loadingCountryMessage("Could not load stations for ", o.loadingCountryName(), ".").Segments
+			o.loadDescription.Segments = loadingCountryMessage("Could not complete setup for ", o.loadingCountryName(), ".").Segments
 			o.loadDescription.Refresh()
+		}
+		if o.loadContinue != nil {
+			o.loadContinue.SetText("Retry")
+			o.loadContinue.OnTapped = func() { o.startCountrySetup(o.pendingCode) }
 		}
 	} else {
 		labels := []string{"Connected to Radio Browser", "Loaded stations for " + o.loadingCountryName(), "Radio experience ready"}
@@ -437,7 +460,6 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 	if o.loadContent != nil {
 		o.loadContent.Refresh()
 	}
-	w.initialStations = stations
 }
 
 // logo returns the FyneTune icon used across onboarding screens.

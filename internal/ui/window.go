@@ -287,7 +287,7 @@ func (w *Window) showApp() {
 	if w.home == nil {
 		return
 	}
-	if len(w.initialStations) > 0 {
+	if w.initialStations != nil {
 		w.home.setStations(w.initialStations)
 	} else {
 		w.home.loadPopular()
