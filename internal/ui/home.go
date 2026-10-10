@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 )
@@ -18,16 +20,19 @@ import (
 const (
 	homeStationLimit = 20
 	homeRequestLimit = 15 * time.Second
+	homeCacheTTL     = 24 * time.Hour
 )
 
 // homeSection loads the directory stations shown on the Radio tab.
 type homeSection struct {
 	*fyne.Container
-	window    *Window
-	subtitle  *widget.Label
-	status    *widget.Label
-	rows      *stationList
-	requestID uint64
+	window     *Window
+	subtitle   *widget.Label
+	status     *widget.Label
+	rows       *stationList
+	cache      *cache.Store
+	requestID  uint64
+	loadingKey string
 }
 
 // newHomeSection creates the Radio section and its reusable station list.
@@ -37,21 +42,11 @@ func newHomeSection(w *Window) *homeSection {
 		subtitle: widget.NewLabel(homeSubtitle(w.settings.DiscoveryCountry)),
 		status:   widget.NewLabel("Loading stations…"),
 		rows:     newStationList(w, false),
+		cache:    cache.New(w.app.Cache()),
 	}
 	h.subtitle.SizeName = theme.SizeNameText
 	h.Container = container.NewBorder(h.status, nil, nil, nil, h.rows.list)
 	return h
-}
-
-// setStations replaces the displayed directory results.
-func (h *homeSection) setStations(stations []radio.Station) {
-	h.requestID++
-	h.rows.setStations(stations)
-	if len(stations) == 0 {
-		h.setStatus("No stations found.")
-	} else {
-		h.setStatus("")
-	}
 }
 
 // homeSubtitle describes the popular stations shown for the saved country.
@@ -67,6 +62,18 @@ func homeSubtitle(region string) string {
 		return "Popular stations"
 	default:
 		return "Popular stations in " + region
+	}
+}
+
+// setStations replaces the displayed stations supplied by onboarding.
+func (h *homeSection) setStations(stations []radio.Station) {
+	h.requestID++
+	h.loadingKey = ""
+	h.rows.setStations(stations)
+	if len(stations) == 0 {
+		h.setStatus("No stations found.")
+	} else {
+		h.setStatus("")
 	}
 }
 
@@ -101,16 +108,49 @@ func (h *homeSection) loadPopular() {
 
 // fetch loads matching stations and applies a result only while it is current.
 func (h *homeSection) fetch(query radiobrowser.Query, popular bool, status string) {
+	key := fmt.Sprintf("home-stations:%t:%q:%q:%t:%d", popular, query.Country, query.CountryCode, query.CountryExact, query.Limit)
+	if h.loadingKey == key {
+		return
+	}
+	h.loadingKey = key
 	h.requestID++
 	requestID := h.requestID
 	h.setStatus(status)
 	if h.window.directory == nil {
+		h.loadingKey = ""
 		h.setStatus("Station directory unavailable.")
 		return
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), homeRequestLimit)
 		defer cancel()
+		var cached []radio.Station
+		cachedResult, cacheErr := h.cache.Get(key, homeCacheTTL, &cached)
+		if cacheErr != nil {
+			slog.Warn("could not read cached radio stations", "error", cacheErr)
+		}
+		hasCached := cacheErr == nil && cachedResult.Found
+		if hasCached {
+			fyne.Do(func() {
+				if requestID != h.requestID {
+					return
+				}
+				h.rows.setStations(cached)
+				if cachedResult.Fresh {
+					h.loadingKey = ""
+					if len(cached) == 0 {
+						h.setStatus("No stations found.")
+					} else {
+						h.setStatus("")
+					}
+				} else {
+					h.setStatus("Updating stations…")
+				}
+			})
+			if cachedResult.Fresh {
+				return
+			}
+		}
 		var stations []radio.Station
 		var err error
 		if popular {
@@ -118,16 +158,36 @@ func (h *homeSection) fetch(query radiobrowser.Query, popular bool, status strin
 		} else {
 			stations, err = h.window.directory.Search(ctx, query)
 		}
+		if err == nil {
+			if cacheErr := h.cache.Set(key, stations); cacheErr != nil {
+				slog.Warn("could not cache radio stations", "error", cacheErr)
+			}
+		}
 		fyne.Do(func() {
 			if requestID != h.requestID {
 				return
 			}
+			h.loadingKey = ""
 			if err != nil {
-				h.setStatus("Could not load stations. Check your connection and try again.")
-				h.rows.setStations(nil)
+				if hasCached {
+					slog.Debug("could not refresh cached radio stations", "error", err)
+					if len(cached) == 0 {
+						h.setStatus("No stations found.")
+					} else {
+						h.setStatus("")
+					}
+				} else {
+					h.rows.setStations(nil)
+					h.setStatus("Could not load stations. Check your connection and try again.")
+				}
 				return
 			}
-			h.setStations(stations)
+			h.rows.setStations(stations)
+			if len(stations) == 0 {
+				h.setStatus("No stations found.")
+			} else {
+				h.setStatus("")
+			}
 		})
 	}()
 }
