@@ -2,6 +2,9 @@
 go = "1.27.1"
 java = "21"
 android-sdk = "23.0"
+# CLI tools used to render and optimize the generated Lucide PNG icons.
+resvg = "0.48.1"
+oxipng = "10.2.1"
 
 [env]
 ANDROID_PLATFORM = "android-36"
@@ -51,6 +54,10 @@ run = "mkdir -p dist && go tool fyne build --source-dir . --output dist/fynetune
 [tasks.package]
 description = "Create a development package for the current desktop operating system"
 run = "mkdir -p dist && cd dist && go tool fyne package --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+
+[tasks.generate-icons]
+description = "Download Lucide SVGs and regenerate optimized FyneTune PNG icon assets"
+run = "bash internal/ui/assets/icons/generate-icons.sh"
 
 [tasks.check]
 description = "Run formatting, analysis, tests, vulnerability check, and build"

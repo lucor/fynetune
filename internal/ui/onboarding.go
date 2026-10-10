@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 )
 
 // countrySetupTimeout bounds country and initial station requests during onboarding.
@@ -366,7 +367,7 @@ func (o *onboarding) showCountryLoading() {
 	note.Wrapping = fyne.TextWrapWord
 	noteContent := container.NewBorder(
 		nil, nil,
-		container.NewPadded(widget.NewIcon(theme.InfoIcon())),
+		container.NewPadded(widget.NewIcon(icons.Info())),
 		nil,
 		note,
 	)

@@ -38,14 +38,20 @@ const (
 )
 
 var (
-	brandNavy            = color.NRGBA{R: 14, G: 45, B: 91, A: 255}
-	brandAccent          = color.NRGBA{R: 11, G: 143, B: 243, A: 255}
-	sectionTitleLight    = brandNavy
-	sectionTitleDark     = color.NRGBA{R: 238, G: 243, B: 250, A: 255}
-	stationMetadataLight = color.NRGBA{R: 64, G: 87, B: 120, A: 255}
-	stationMetadataDark  = color.NRGBA{R: 189, G: 204, B: 224, A: 255}
-	stationBadgeLight    = color.NRGBA{R: 232, G: 238, B: 245, A: 255}
-	stationBadgeDark     = color.NRGBA{R: 38, G: 60, B: 84, A: 255}
+	brandNavy             = color.NRGBA{R: 14, G: 45, B: 91, A: 255}
+	brandAccent           = color.NRGBA{R: 11, G: 143, B: 243, A: 255}
+	sectionTitleLight     = brandNavy
+	sectionTitleDark      = color.NRGBA{R: 238, G: 243, B: 250, A: 255}
+	stationMetadataLight  = color.NRGBA{R: 64, G: 87, B: 120, A: 255}
+	stationMetadataDark   = color.NRGBA{R: 189, G: 204, B: 224, A: 255}
+	stationBadgeLight     = color.NRGBA{R: 232, G: 238, B: 245, A: 255}
+	stationBadgeDark      = color.NRGBA{R: 38, G: 60, B: 84, A: 255}
+	settingsSurfaceLight  = color.NRGBA{R: 248, G: 250, B: 253, A: 255}
+	settingsSurfaceDark   = color.NRGBA{R: 43, G: 55, B: 70, A: 255}
+	settingsBorderLight   = color.NRGBA{R: 155, G: 169, B: 188, A: 255}
+	settingsBorderDark    = color.NRGBA{R: 105, G: 122, B: 143, A: 255}
+	settingsDisabledLight = color.NRGBA{R: 231, G: 237, B: 245, A: 255}
+	settingsDisabledDark  = color.NRGBA{R: 55, G: 69, B: 87, A: 255}
 )
 
 // brandTheme adds the FyneTune palette and station metadata sizing.
@@ -119,17 +125,35 @@ func (t compactTextTheme) Size(name fyne.ThemeSizeName) float32 {
 	return t.Theme.Size(name)
 }
 
-// settingsCardTheme gives native cards a flat, rounded background while retaining
-// the application's palette and standard control spacing.
+// settingsCardTheme gives settings cards a distinct surface and clearer controls.
 type settingsCardTheme struct {
 	fyne.Theme
 }
 
-// Color removes card shadows and uses the theme's subtle input background.
+// Color keeps settings cards distinct from the page and improves control contrast.
 func (t settingsCardTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	dark := variant == theme.VariantDark
 	switch name {
-	case theme.ColorNameBackground:
-		return t.Theme.Color(theme.ColorNameInputBackground, variant)
+	case theme.ColorNameBackground, theme.ColorNameInputBackground:
+		if dark {
+			return settingsSurfaceDark
+		}
+		return settingsSurfaceLight
+	case theme.ColorNameInputBorder:
+		if dark {
+			return settingsBorderDark
+		}
+		return settingsBorderLight
+	case theme.ColorNameDisabled:
+		if dark {
+			return stationMetadataDark
+		}
+		return stationMetadataLight
+	case theme.ColorNameDisabledButton:
+		if dark {
+			return settingsDisabledDark
+		}
+		return settingsDisabledLight
 	case theme.ColorNameShadow:
 		return color.Transparent
 	default:

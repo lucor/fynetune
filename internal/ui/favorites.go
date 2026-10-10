@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 	"go.lucor.dev/fynetune/internal/ui/widgets"
 )
 
@@ -35,7 +36,7 @@ func newFavoritesSection(w *Window) *favoritesSection {
 		window:   w,
 		rows:     rows,
 		content:  content,
-		empty:    favoritesEmptyState(),
+		empty:    favoritesEmptyState(w),
 		saved:    saved,
 		subtitle: subtitle,
 	}
@@ -68,8 +69,8 @@ func (s *favoritesSection) refreshTheme() {
 }
 
 // favoritesEmptyState explains how to add the first saved station.
-func favoritesEmptyState() fyne.CanvasObject {
-	icon := widget.NewIcon(homeFavoriteOutline)
+func favoritesEmptyState(w *Window) fyne.CanvasObject {
+	icon := w.newThemeIcon(icons.Favorites)
 	icon.Resize(fyne.NewSquareSize(42))
 	title := widget.NewLabelWithStyle("No favorites yet", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	detail := widget.NewLabel("Save a station from Radio to keep it here.")

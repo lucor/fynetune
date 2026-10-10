@@ -34,7 +34,7 @@ func TestRecentGroupsGlobalHistoryAndPlaysStation(t *testing.T) {
 			{Station: italian, PlayedAt: today},
 		},
 	}
-	w.playerBar = newPlayerWidget(app.Settings().Theme(), .75, nil, nil, nil)
+	w.playerBar = newPlayerWidget(w, .75, nil, nil, nil)
 	w.recentSection = newRecentSection(w)
 	rows := w.recentSection.rows
 	window.SetContent(w.recentSection.Container)

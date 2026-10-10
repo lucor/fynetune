@@ -20,6 +20,8 @@ import (
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
+	"go.lucor.dev/fynetune/internal/ui/navigation"
 	"go.lucor.dev/fynetune/internal/ui/widgets"
 )
 
@@ -32,6 +34,8 @@ type Window struct {
 	settingsCountryFlag  *canvas.Text
 	settingsCountryName  *widget.Label
 	settingsVersionBadge *widgets.Badge
+	themeIcons           []themeIcon
+	bottomNavigation     *navigation.Navigation
 	radioPlayer          radio.Player
 	store                *storage.Store
 	settings             storage.Settings
@@ -53,6 +57,11 @@ type Window struct {
 	eventsDone           chan struct{}
 	closeOnce            sync.Once
 	closeErr             error
+}
+
+type themeIcon struct {
+	widget   *widget.Icon
+	resource func() fyne.Resource
 }
 
 // New creates the window and displays onboarding when no discovery country is saved.
@@ -100,6 +109,7 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 			return
 		}
 		lastVariant = variant
+		w.refreshIconTheme()
 		sectionTitleColor := settings.Theme().Color(sectionTitleColorName, variant)
 		if w.sectionHeader != nil {
 			w.sectionHeader.Refresh()
@@ -150,6 +160,7 @@ func (w *Window) setAppearance(appearance string) {
 	w.settings.Appearance = appearance
 	w.theme.appearance = appearance
 	w.app.Settings().SetTheme(w.theme)
+	w.refreshIconTheme()
 	if w.sectionHeader != nil {
 		w.sectionHeader.Refresh()
 	}
@@ -164,6 +175,38 @@ func (w *Window) setAppearance(appearance string) {
 		"section_title_color", theme.Color(sectionTitleColorName),
 		"persisted", err == nil,
 	)
+}
+
+// newThemeIcon creates an icon widget that can be refreshed when the app theme changes.
+func (w *Window) newThemeIcon(resource func() fyne.Resource) *widget.Icon {
+	icon := widget.NewIcon(resource())
+	w.themeIcons = append(w.themeIcons, themeIcon{widget: icon, resource: resource})
+	return icon
+}
+
+// refreshIconTheme updates embedded PNG icons after the Fyne theme variant changes.
+func (w *Window) refreshIconTheme() {
+	for _, icon := range w.themeIcons {
+		icon.widget.SetResource(icon.resource())
+	}
+	if w.bottomNavigation != nil {
+		w.bottomNavigation.SetItemIcons(1, icons.Favorites(), icons.FavoritesActive())
+		w.bottomNavigation.SetItemIcons(2, icons.Recent(), icons.RecentActive())
+		w.bottomNavigation.SetItemIcons(3, icons.Discover(), icons.DiscoverActive())
+		w.bottomNavigation.SetItemIcons(4, icons.Settings(), icons.SettingsActive())
+	}
+	if w.playerBar != nil {
+		w.playerBar.refreshIconTheme()
+	}
+	if w.home != nil {
+		w.home.rows.refreshIconTheme()
+	}
+	if w.favorites != nil {
+		w.favorites.rows.refreshIconTheme()
+	}
+	if w.recentSection != nil {
+		w.recentSection.rows.refreshIconTheme()
+	}
 }
 
 // changeCountry opens the searchable country list from Settings.

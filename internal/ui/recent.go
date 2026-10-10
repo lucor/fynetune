@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 )
 
 const recentStationLimit = 20
@@ -31,7 +32,7 @@ func newRecentSection(w *Window) *recentSection {
 		window:   w,
 		rows:     newStationList(w, true),
 		content:  container.NewStack(),
-		empty:    recentEmptyState(),
+		empty:    recentEmptyState(w),
 		subtitle: widget.NewLabel("Recently played stations"),
 	}
 	s.history = container.NewVBox()
@@ -77,8 +78,8 @@ func (s *recentSection) refresh() {
 }
 
 // recentEmptyState explains that played stations will appear in this section.
-func recentEmptyState() fyne.CanvasObject {
-	icon := widget.NewIcon(theme.HistoryIcon())
+func recentEmptyState(w *Window) fyne.CanvasObject {
+	icon := w.newThemeIcon(icons.Recent)
 	icon.Resize(fyne.NewSquareSize(42))
 	title := widget.NewLabelWithStyle("Nothing played yet", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	detail := widget.NewLabel("Stations you play will appear here.")

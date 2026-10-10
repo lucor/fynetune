@@ -20,6 +20,7 @@ import (
 	"go.lucor.dev/fynetune/internal/favicon"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 	"go.lucor.dev/fynetune/internal/ui/widgets"
 	xdraw "golang.org/x/image/draw"
 )
@@ -127,7 +128,7 @@ func (s *stationList) setRecent(recent []storage.RecentStation) {
 // newRow creates one row with shared artwork and favorite controls.
 func (s *stationList) newRow() fyne.CanvasObject {
 	row := &stationListRow{artwork: newStationArtwork()}
-	row.favorite = widget.NewButtonWithIcon("", homeFavoriteOutline, func() {
+	row.favorite = widget.NewButtonWithIcon("", icons.Favorites(), func() {
 		s.window.toggleFavorite(row.station)
 	})
 	row.favorite.Importance = widget.LowImportance
@@ -204,11 +205,23 @@ func (s *stationList) updateRow(id widget.ListItemID, object fyne.CanvasObject) 
 		}
 	}
 	s.setStationArtwork(row, station)
-	favoriteIcon := homeFavoriteOutline
-	if s.window.isFavorite(station.ID) {
-		favoriteIcon = homeFavoriteFilled
+	s.setFavoriteIcon(row)
+}
+
+// refreshIconTheme updates favorite icons in rows currently held by this list.
+func (s *stationList) refreshIconTheme() {
+	for _, row := range s.rows {
+		s.setFavoriteIcon(row)
 	}
-	row.favorite.SetIcon(favoriteIcon)
+}
+
+// setFavoriteIcon shows the theme-colored outline or blue selected heart.
+func (s *stationList) setFavoriteIcon(row *stationListRow) {
+	if s.window.isFavorite(row.station.ID) {
+		row.favorite.SetIcon(icons.FavoritesActive())
+		return
+	}
+	row.favorite.SetIcon(icons.Favorites())
 }
 
 // newStationArtwork displays the FyneTune icon until a station favicon loads.

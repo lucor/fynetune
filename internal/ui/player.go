@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/radio"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 )
 
 const (
@@ -29,6 +30,7 @@ type playerWidget struct {
 	mute      *widget.Button
 	volumeRow *fyne.Container
 	expanded  bool
+	muted     bool
 }
 
 type playerControlTheme struct {
@@ -47,7 +49,8 @@ func (t playerControlTheme) Size(name fyne.ThemeSizeName) float32 {
 }
 
 // newPlayerWidget builds the player layout with standard Fyne widgets.
-func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVolumeChanged func(float64), onMute func()) *playerWidget {
+func newPlayerWidget(w *Window, volume float64, onToggle func(), onVolumeChanged func(float64), onMute func()) *playerWidget {
+	baseTheme := w.app.Settings().Theme()
 	artwork := newStationArtwork()
 
 	title := widget.NewLabelWithStyle("Choose a station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -80,7 +83,7 @@ func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVo
 		play:      play,
 		volume:    widget.NewSlider(0, 1),
 		volumePct: widget.NewLabel(""),
-		mute:      widget.NewButtonWithIcon("", theme.VolumeUpIcon(), onMute),
+		mute:      widget.NewButtonWithIcon("", icons.Volume(), onMute),
 	}
 	p.volume.Step = 0.01
 	p.volume.Value = volume
@@ -94,6 +97,7 @@ func newPlayerWidget(baseTheme fyne.Theme, volume float64, onToggle func(), onVo
 		p.volume,
 	)
 	p.volumeRow.Hide()
+	p.refreshIconTheme()
 	compact := newPlayerTapArea(content, p.toggleVolume)
 	p.Container = container.NewVBox(widget.NewSeparator(), compact, p.volumeRow)
 	p.setVolumeState(volume, false)
@@ -121,10 +125,11 @@ func (p *playerWidget) setVolumeState(volume float64, muted bool) {
 	}
 	p.volumePct.SetText(fmt.Sprintf("%d%%", int(actual*100+0.5)))
 	if actual == 0 {
-		p.mute.SetIcon(theme.VolumeMuteIcon())
+		p.muted = true
 	} else {
-		p.mute.SetIcon(theme.VolumeUpIcon())
+		p.muted = false
 	}
+	p.refreshIconTheme()
 }
 
 // setPlayback displays the selected station and current playback state.
@@ -141,6 +146,15 @@ func (p *playerWidget) setPlayback(station radio.Station, status string, playing
 		p.play.SetIcon(theme.MediaStopIcon())
 	} else {
 		p.play.SetIcon(theme.MediaPlayIcon())
+	}
+}
+
+// refreshIconTheme updates the player controls to match the active theme.
+func (p *playerWidget) refreshIconTheme() {
+	if p.muted {
+		p.mute.SetIcon(icons.VolumeMuted())
+	} else {
+		p.mute.SetIcon(icons.Volume())
 	}
 }
 

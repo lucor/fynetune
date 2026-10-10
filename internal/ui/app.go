@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
 
@@ -19,17 +20,7 @@ var iconSVG []byte
 //go:embed assets/wordmark.svg
 var wordmarkSVG []byte
 
-//go:embed assets/favorite-outline.png
-var favoriteOutlinePNG []byte
-
-//go:embed assets/favorite-filled.png
-var favoriteFilledPNG []byte
-
-var (
-	homeBrandIcon       = fyne.NewStaticResource("FyneTune-icon.svg", iconSVG)
-	homeFavoriteOutline = fyne.NewStaticResource("favorite-outline.png", favoriteOutlinePNG)
-	homeFavoriteFilled  = fyne.NewStaticResource("favorite-filled.png", favoriteFilledPNG)
-)
+var homeBrandIcon = fyne.NewStaticResource("FyneTune-icon.svg", iconSVG)
 
 // newApp builds the app view with its section header and bottom navigation.
 func newApp(w *Window) fyne.CanvasObject {
@@ -48,7 +39,7 @@ func newApp(w *Window) fyne.CanvasObject {
 		w.settingsPage(),
 	}
 	content := container.NewStack(pages[0])
-	w.playerBar = newPlayerWidget(w.app.Settings().Theme(), w.settings.Volume, w.togglePlayback, w.setVolume, w.toggleMute)
+	w.playerBar = newPlayerWidget(w, w.settings.Volume, w.togglePlayback, w.setVolume, w.toggleMute)
 
 	headerText := widget.NewLabelWithStyle("Radio", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	w.sectionHeader = headerText
@@ -70,14 +61,13 @@ func newApp(w *Window) fyne.CanvasObject {
 			Icon:     homeBrandIcon,
 			IconSize: theme.Size(theme.SizeNameInlineIcon) + theme.Size(theme.SizeNamePadding),
 		},
-		navigation.Item{
-			Icon:         homeFavoriteOutline,
-			SelectedIcon: homeFavoriteFilled,
-		},
-		navigation.Item{Icon: theme.HistoryIcon()},
-		navigation.Item{Icon: theme.SearchIcon()},
-		navigation.Item{Icon: theme.SettingsIcon()},
+		navigation.Item{Icon: icons.Favorites(), SelectedIcon: icons.FavoritesActive()},
+		navigation.Item{Icon: icons.Recent(), SelectedIcon: icons.RecentActive()},
+		navigation.Item{Icon: icons.Discover(), SelectedIcon: icons.DiscoverActive()},
+		navigation.Item{Icon: icons.Settings(), SelectedIcon: icons.SettingsActive()},
 	)
+	w.bottomNavigation = nav
+	w.refreshIconTheme()
 	headerTitles := []string{"Radio", "Favorites", "Recent", "Discover", "Settings"}
 	nav.OnSelected = func(index int) {
 		content.Objects = []fyne.CanvasObject{pages[index]}
