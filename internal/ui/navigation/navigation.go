@@ -8,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -129,11 +128,6 @@ func (b *navButton) CreateRenderer() fyne.WidgetRenderer {
 // Tapped selects this navigation destination.
 func (b *navButton) Tapped(*fyne.PointEvent) {
 	b.onTapped()
-}
-
-// Cursor signals that the navigation item is clickable on desktop.
-func (b *navButton) Cursor() desktop.Cursor {
-	return desktop.PointerCursor
 }
 
 // setSelected applies the selection state to the item renderer.
