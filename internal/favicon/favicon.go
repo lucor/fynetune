@@ -38,6 +38,20 @@ type Options struct {
 	// Client is the HTTP client used to download the favicon. Leave nil to use
 	// a client with a five-second timeout.
 	Client *http.Client
+	// ETag and LastModified validate the resource passed to DownloadURL.
+	// Download discovers a new resource and does not use these validators.
+	ETag         string
+	LastModified string
+}
+
+// DownloadResult describes an image response and its HTTP cache validators.
+type DownloadResult struct {
+	Icon         Icon
+	URL          string
+	ETag         string
+	LastModified string
+	// NotModified indicates a successful validation; Icon is empty in this case.
+	NotModified bool
 }
 
 // Icon contains either a decoded raster favicon or the original SVG bytes.
@@ -55,9 +69,9 @@ type Icon struct {
 
 // Download finds and downloads the best icon linked from the specified page.
 // If the URL has no scheme, HTTPS is used.
-func Download(ctx context.Context, u *url.URL, opts Options) (Icon, error) {
+func Download(ctx context.Context, u *url.URL, opts Options) (DownloadResult, error) {
 	if u == nil {
-		return Icon{}, fmt.Errorf("favicon URL is nil")
+		return DownloadResult{}, fmt.Errorf("favicon URL is nil")
 	}
 	client := opts.Client
 	if client == nil {
@@ -70,29 +84,46 @@ func Download(ctx context.Context, u *url.URL, opts Options) (Icon, error) {
 	}
 	iconData, baseURL, err := findFavicon(ctx, client, &pageURL)
 	if err != nil {
-		return Icon{}, fmt.Errorf("find favicon: %w", err)
+		return DownloadResult{}, fmt.Errorf("find favicon: %w", err)
 	}
-	return downloadURL(ctx, client, iconData.MakeRawURL(baseURL))
+	return downloadURL(ctx, client, iconData.MakeRawURL(baseURL), Options{})
 }
 
 // DownloadURL downloads and decodes an icon from a direct URL.
-func DownloadURL(ctx context.Context, rawURL string, opts Options) (Icon, error) {
+func DownloadURL(ctx context.Context, rawURL string, opts Options) (DownloadResult, error) {
 	client := opts.Client
 	if client == nil {
 		client = &http.Client{Timeout: httpClientTimeout}
 	}
-	return downloadURL(ctx, client, rawURL)
+	return downloadURL(ctx, client, rawURL, opts)
 }
 
-func downloadURL(ctx context.Context, client *http.Client, rawURL string) (Icon, error) {
-	res, err := makeRequest(ctx, client, rawURL)
+// downloadURL handles conditional responses before reading and decoding image data.
+func downloadURL(ctx context.Context, client *http.Client, rawURL string, opts Options) (DownloadResult, error) {
+	res, err := makeRequest(ctx, client, rawURL, opts)
 	if err != nil {
-		return Icon{}, fmt.Errorf("download favicon: %w", err)
+		return DownloadResult{}, fmt.Errorf("download favicon: %w", err)
 	}
 	defer res.Body.Close()
+	result := DownloadResult{
+		URL:          res.Request.URL.String(),
+		ETag:         res.Header.Get("ETag"),
+		LastModified: res.Header.Get("Last-Modified"),
+	}
+	if res.StatusCode == http.StatusNotModified {
+		result.NotModified = true
+		// A 304 can omit unchanged validators; retain the values sent in the request.
+		if result.ETag == "" {
+			result.ETag = opts.ETag
+		}
+		if result.LastModified == "" {
+			result.LastModified = opts.LastModified
+		}
+		return result, nil
+	}
 	data, err := readLimited(res.Body, maxIconBytes)
 	if err != nil {
-		return Icon{}, fmt.Errorf("read favicon: %w", err)
+		return DownloadResult{}, fmt.Errorf("read favicon: %w", err)
 	}
 	icon, err := decode(data, res.Header.Get("Content-Type"))
 	if err != nil {
@@ -100,9 +131,10 @@ func downloadURL(ctx context.Context, client *http.Client, rawURL string) (Icon,
 		if contentType == "" {
 			contentType = "not provided"
 		}
-		return Icon{}, fmt.Errorf("decode favicon with Content-Type %q: %w", contentType, err)
+		return DownloadResult{}, fmt.Errorf("decode favicon with Content-Type %q: %w", contentType, err)
 	}
-	return icon, nil
+	result.Icon = icon
+	return result, nil
 }
 
 // Decode validates and decodes bounded favicon data for use from the cache.
@@ -145,18 +177,26 @@ func isSVG(data []byte) bool {
 	return bytes.HasPrefix(trimmed, []byte("<svg")) || bytes.HasPrefix(trimmed, []byte("<?xml"))
 }
 
-func makeRequest(ctx context.Context, client *http.Client, rawURL string) (*http.Response, error) {
+// makeRequest sends validators only when supplied for this resource.
+func makeRequest(ctx context.Context, client *http.Client, rawURL string, opts Options) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP request: %w", err)
 	}
 	req.Header.Set("Accept", "image/*, text/html;q=0.9, */*;q=0.8")
 	req.Header.Set("User-Agent", version.UserAgent())
+	if opts.ETag != "" {
+		req.Header.Set("If-None-Match", opts.ETag)
+	}
+	if opts.LastModified != "" {
+		req.Header.Set("If-Modified-Since", opts.LastModified)
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch URL: %w", err)
 	}
-	if res.StatusCode != http.StatusOK {
+	conditional := opts.ETag != "" || opts.LastModified != ""
+	if res.StatusCode != http.StatusOK && !(conditional && res.StatusCode == http.StatusNotModified) {
 		res.Body.Close()
 		return nil, fmt.Errorf("HTTP %d: %s", res.StatusCode, res.Status)
 	}
@@ -164,7 +204,7 @@ func makeRequest(ctx context.Context, client *http.Client, rawURL string) (*http
 }
 
 func findFavicon(ctx context.Context, client *http.Client, u *url.URL) (*faviconData, *url.URL, error) {
-	res, err := makeRequest(ctx, client, u.String())
+	res, err := makeRequest(ctx, client, u.String(), Options{})
 	if err != nil {
 		return nil, nil, err
 	}

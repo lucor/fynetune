@@ -15,8 +15,6 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/hashicorp/golang-lru/v2"
-	"go.lucor.dev/fynetune/internal/favicon"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
@@ -41,7 +39,6 @@ type Window struct {
 	settings             storage.Settings
 	directory            radiobrowser.Directory
 	countriesMu          sync.Mutex
-	iconCache            *lru.Cache[string, favicon.Icon]
 	appContent           fyne.CanvasObject
 	onboarding           *onboarding
 	home                 *homeSection

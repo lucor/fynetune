@@ -2,12 +2,8 @@ package ui
 
 import (
 	"context"
-	"fmt"
-	"image"
 	"net/http"
-	"net/url"
 	"slices"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -16,17 +12,14 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/hashicorp/golang-lru/v2"
 	"go.lucor.dev/fynetune/internal/favicon"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/storage"
 	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 	"go.lucor.dev/fynetune/internal/ui/widgets"
-	xdraw "golang.org/x/image/draw"
 )
 
 const (
-	stationIconSize      = 256
 	stationArtworkSize   = 52
 	stationArtworkRound  = 8
 	stationBadgePaddingY = 2
@@ -46,7 +39,6 @@ type stationList struct {
 	entries        []stationListEntry
 	rows           map[fyne.CanvasObject]*stationListRow
 	iconClient     *http.Client
-	iconCache      *lru.Cache[string, favicon.Icon]
 	iconLoading    map[string]struct{}
 	iconFailed     map[string]struct{}
 	iconGeneration uint64
@@ -65,15 +57,11 @@ type stationListRow struct {
 
 // newStationList builds the shared station list for Home, Favorites, or Recent.
 func newStationList(w *Window, showPlayedAt bool) *stationList {
-	if w.iconCache == nil {
-		w.iconCache = newHomeStationIconCache()
-	}
 	s := &stationList{
 		window:       w,
 		showPlayedAt: showPlayedAt,
 		rows:         make(map[fyne.CanvasObject]*stationListRow),
 		iconClient:   &http.Client{Timeout: 8 * time.Second},
-		iconCache:    w.iconCache,
 		iconLoading:  make(map[string]struct{}),
 		iconFailed:   make(map[string]struct{}),
 	}
@@ -235,15 +223,11 @@ func newStationArtwork() *canvas.Image {
 	return artwork
 }
 
-// setStationArtwork applies a cached favicon or starts one bounded async fetch.
+// setStationArtwork applies the placeholder or starts an asynchronous icon load.
 func (s *stationList) setStationArtwork(row *stationListRow, station radio.Station) {
 	key := stationIconKey(station)
 	applyStationIcon(row.artwork, favicon.Icon{SVG: homeBrandIcon.Content(), Format: "svg"})
 	if key == "" {
-		return
-	}
-	if icon, ok := s.iconCache.Get(key); ok {
-		applyStationIcon(row.artwork, icon)
 		return
 	}
 	if _, failed := s.iconFailed[key]; failed {
@@ -256,40 +240,27 @@ func (s *stationList) setStationArtwork(row *stationListRow, station radio.Stati
 	go s.fetchStationArtwork(row, station, key, s.iconGeneration)
 }
 
-// setPlayerArtwork applies the selected station's cached favicon when available.
+// setPlayerArtwork applies the placeholder and loads the selected station's icon.
 func (s *stationList) setPlayerArtwork(station radio.Station) {
 	if s.window.playerBar == nil {
 		return
 	}
 	applyStationIcon(s.window.playerBar.artwork, favicon.Icon{SVG: homeBrandIcon.Content(), Format: "svg"})
-	if icon, ok := s.iconCache.Get(stationIconKey(station)); ok {
-		applyStationIcon(s.window.playerBar.artwork, icon)
+	key := stationIconKey(station)
+	if key == "" {
+		return
 	}
+	if _, loading := s.iconLoading[key]; loading {
+		return
+	}
+	go s.fetchPlayerArtwork(station, key)
 }
 
-// fetchStationArtwork downloads the homepage icon, then the Radio Browser URL.
+// fetchStationArtwork loads a persistent or downloaded icon outside the UI thread.
 func (s *stationList) fetchStationArtwork(row *stationListRow, station radio.Station, key string, generation uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	var icon favicon.Icon
-	var err error
-	if homepage := strings.TrimSpace(station.Homepage); homepage != "" {
-		if parsed, parseErr := url.Parse(homepage); parseErr == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https") {
-			icon, err = favicon.Download(ctx, parsed, favicon.Options{Client: s.iconClient})
-		}
-	}
-	if err != nil || (icon.Raster == nil && len(icon.SVG) == 0) {
-		if faviconURL := strings.TrimSpace(station.Favicon); faviconURL != "" {
-			icon, err = favicon.DownloadURL(ctx, faviconURL, favicon.Options{Client: s.iconClient})
-		}
-	}
-	if err == nil {
-		if icon.Raster == nil && len(icon.SVG) == 0 {
-			err = fmt.Errorf("favicon contains no image")
-		} else if icon.Raster != nil {
-			icon.Raster = resizeStationIcon(icon.Raster)
-		}
-	}
+	icon, err := s.loadStationIcon(ctx, station, key)
 	fyne.Do(func() {
 		if generation != s.iconGeneration {
 			return
@@ -299,7 +270,6 @@ func (s *stationList) fetchStationArtwork(row *stationListRow, station radio.Sta
 			s.iconFailed[key] = struct{}{}
 			return
 		}
-		s.iconCache.Add(key, icon)
 		if stationIconKey(row.station) == key {
 			applyStationIcon(row.artwork, icon)
 		}
@@ -309,42 +279,19 @@ func (s *stationList) fetchStationArtwork(row *stationListRow, station radio.Sta
 	})
 }
 
-// newHomeStationIconCache shares a bounded icon cache across station sections.
-func newHomeStationIconCache() *lru.Cache[string, favicon.Icon] {
-	cache, err := lru.New[string, favicon.Icon](64)
+// fetchPlayerArtwork loads a station icon for the player from persistent cache or network.
+func (s *stationList) fetchPlayerArtwork(station radio.Station, key string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	icon, err := s.loadStationIcon(ctx, station, key)
 	if err != nil {
-		panic("station icon cache capacity must be positive: " + err.Error())
+		return
 	}
-	return cache
-}
-
-// stationIconKey identifies a station icon source independent of row reuse.
-func stationIconKey(station radio.Station) string {
-	faviconURL := strings.TrimSpace(station.Favicon)
-	homepageURL := strings.TrimSpace(station.Homepage)
-	if faviconURL == "" && homepageURL == "" {
-		return ""
-	}
-	return homepageURL + "\x00" + faviconURL
-}
-
-// resizeStationIcon bounds decoded raster memory while retaining display detail.
-func resizeStationIcon(source image.Image) image.Image {
-	bounds := source.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width <= stationIconSize && height <= stationIconSize {
-		return source
-	}
-	if width >= height {
-		height = max(1, height*stationIconSize/width)
-		width = stationIconSize
-	} else {
-		width = max(1, width*stationIconSize/height)
-		height = stationIconSize
-	}
-	resized := image.NewNRGBA(image.Rect(0, 0, width, height))
-	xdraw.ApproxBiLinear.Scale(resized, resized.Bounds(), source, bounds, xdraw.Src, nil)
-	return resized
+	fyne.Do(func() {
+		if stationIconKey(s.window.selectedStation) == key && s.window.playerBar != nil {
+			applyStationIcon(s.window.playerBar.artwork, icon)
+		}
+	})
 }
 
 // applyStationIcon applies a raster or vector favicon to an image widget.

@@ -11,9 +11,11 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"go.lucor.dev/fynetune/internal/audio/otooutput"
+	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
+	"go.lucor.dev/fynetune/internal/storage"
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
 	"go.lucor.dev/fynetune/internal/ui"
 	"go.lucor.dev/fynetune/internal/version"
@@ -21,6 +23,7 @@ import (
 
 const (
 	appID                   = "dev.lucor.fynetune"
+	debugAppID              = "dev.lucor.fynetune-debug"
 	appName                 = "FyneTune"
 	appIconName             = "icon.svg"
 	radioBrowserHTTPTimeout = 15 * time.Second
@@ -31,10 +34,21 @@ const (
 var appIconSVG []byte
 
 func main() {
-	configureLogging()
-	a := app.NewWithID(appID)
+	debug := os.Getenv("FYNETUNE_DEBUG") == "1"
+	configureLogging(debug)
+	currentAppID := appID
+	if debug {
+		currentAppID = debugAppID
+	}
+	a := app.NewWithID(currentAppID)
+	if debug {
+		if err := cache.Clear(a.Cache()); err != nil {
+			slog.Warn("could not clear debug cache", "error", err)
+		}
+		storage.Clear(a.Preferences())
+	}
 	metadata := a.Metadata()
-	metadata.ID = appID
+	metadata.ID = currentAppID
 	metadata.Name = appName
 	metadata.Icon = fyne.NewStaticResource(appIconName, appIconSVG)
 	if metadata.Build < 1 {
@@ -53,15 +67,12 @@ func main() {
 	window.Run()
 }
 
-// configureLogging sets the minimum slog level. Debug diagnostics can be
-// enabled for a run with FYNETUNE_LOG_LEVEL=debug.
-func configureLogging() {
+// configureLogging sets the minimum slog level for the current run.
+func configureLogging(debug bool) {
 	level := new(slog.LevelVar)
 	level.Set(slog.LevelInfo)
-	if value := os.Getenv("FYNETUNE_LOG_LEVEL"); value != "" {
-		if err := level.UnmarshalText([]byte(value)); err != nil {
-			slog.Warn("invalid FYNETUNE_LOG_LEVEL; using info", "value", value, "error", err)
-		}
+	if debug {
+		level.Set(slog.LevelDebug)
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }

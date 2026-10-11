@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/storage"
 )
 
 type Store struct {
@@ -31,6 +32,23 @@ type entry struct {
 
 func New(cache fyne.Cache) *Store {
 	return &Store{cache: cache, now: time.Now}
+}
+
+// Clear removes all entries while keeping the Fyne cache directory available.
+func Clear(cache fyne.Cache) error {
+	if cache == nil {
+		return nil
+	}
+	entries, err := storage.List(cache.RootURI())
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := storage.Delete(entry); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Get decodes a cached value into destination. Expired entries are returned

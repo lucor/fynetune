@@ -19,6 +19,11 @@ run = "go mod download"
 description = "Run FyneTune from source"
 run = "go run ."
 
+[tasks.run-debug]
+description = "Run FyneTune from source with debug logs enabled"
+run = "go run ."
+env = { FYNETUNE_DEBUG = "1" }
+
 [tasks.fmt]
 description = "Format Go source files"
 run = "go fmt ./..."

@@ -21,7 +21,10 @@ func TestRecentGroupsGlobalHistoryAndPlaysStation(t *testing.T) {
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	player := &trayTestPlayer{}
 	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 14, 37, 0, 0, now.Location())
+	// Keep Today entries before playback so a new play reliably moves its station
+	// first, regardless of the test execution time.
+	today := now
+	earlierToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	italian := radio.Station{ID: "it", Name: "Virgin Radio Italia", CountryCode: "IT", Codec: "MP3", Bitrate: 128}
 	american := radio.Station{ID: "us", Name: "Radio Paradise", CountryCode: "US", Codec: "AAC", Bitrate: 192}
 	yesterday := radio.Station{ID: "yesterday", Name: "Rai Radio 1", CountryCode: "IT"}
@@ -30,7 +33,7 @@ func TestRecentGroupsGlobalHistoryAndPlaysStation(t *testing.T) {
 		settings: storage.Settings{DiscoveryCountry: "@IT"},
 		recent: []storage.RecentStation{
 			{Station: yesterday, PlayedAt: today.AddDate(0, 0, -1)},
-			{Station: american, PlayedAt: today.Add(-time.Hour)},
+			{Station: american, PlayedAt: earlierToday},
 			{Station: italian, PlayedAt: today},
 		},
 	}

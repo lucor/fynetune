@@ -46,11 +46,16 @@ func TestDownloadFollowsRedirectAndResolvesIconAgainstFinalURL(t *testing.T) {
 		if got, want := r.Header.Get("User-Agent"), version.UserAgent(); got != want {
 			t.Errorf("User-Agent = %q, want %q", got, want)
 		}
+		if r.Header.Get("If-None-Match") != "" || r.Header.Get("If-Modified-Since") != "" {
+			t.Error("discovery must not forward validators from an unrelated resource")
+		}
 		switch r.URL.Path {
 		case "/radio/home.html":
 			w.Header().Set("Content-Type", "text/html")
 			_, _ = w.Write([]byte(`<html><head><link rel="icon" href="icons/hires.png" type="image/png" sizes="128x128"></head></html>`))
 		case "/radio/icons/hires.png":
+			http.Redirect(w, r, "/assets/icon.png", http.StatusFound)
+		case "/assets/icon.png":
 			w.Header().Set("Content-Type", "image/png")
 			_, _ = w.Write(encoded.Bytes())
 		default:
@@ -71,15 +76,79 @@ func TestDownloadFollowsRedirectAndResolvesIconAgainstFinalURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	icon, err := Download(context.Background(), startURL, Options{Client: redirect.Client()})
+	result, err := Download(context.Background(), startURL, Options{Client: redirect.Client(), ETag: `"unrelated"`, LastModified: "unrelated"})
 	if err != nil {
 		t.Fatalf("Download() error = %v", err)
 	}
+	if result.URL != destination.URL+"/assets/icon.png" {
+		t.Fatalf("downloaded URL = %q", result.URL)
+	}
+	icon := result.Icon
 	if icon.Raster == nil || len(icon.SVG) != 0 {
 		t.Fatalf("downloaded icon = %+v, want raster image", icon)
 	}
 	if got := icon.Raster.Bounds().Size(); got != image.Pt(128, 128) {
 		t.Fatalf("downloaded icon dimensions = %v, want 128x128", got)
+	}
+}
+
+// TestDownloadURLValidation checks conditional headers, empty 304 bodies, and
+// replacement of validators when the server sends a new image.
+func TestDownloadURLValidation(t *testing.T) {
+	const modified = "Tue, 06 Oct 2026 12:00:00 GMT"
+	payload := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>`)
+	for _, tc := range []struct {
+		name         string
+		etag         string
+		lastModified string
+		status       int
+		responseETag string
+		wantError    bool
+	}{
+		{name: "etag unchanged", etag: `W/"v1"`, status: http.StatusNotModified},
+		{name: "last modified unchanged", lastModified: modified, status: http.StatusNotModified},
+		{name: "updated", etag: `"v1"`, lastModified: modified, status: http.StatusOK, responseETag: `"v2"`},
+		{name: "unsolicited 304", status: http.StatusNotModified, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.Header.Get("If-None-Match") != tc.etag || r.Header.Get("If-Modified-Since") != tc.lastModified {
+					t.Errorf("conditional request = %s %v", r.Method, r.Header)
+				}
+				if tc.responseETag != "" {
+					w.Header().Set("ETag", tc.responseETag)
+				}
+				w.WriteHeader(tc.status)
+				if tc.status == http.StatusOK {
+					_, _ = w.Write(payload)
+				}
+			}))
+			defer server.Close()
+			result, err := DownloadURL(context.Background(), server.URL, Options{
+				Client: server.Client(), ETag: tc.etag, LastModified: tc.lastModified,
+			})
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("an unsolicited 304 must be rejected")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.URL != server.URL {
+				t.Fatalf("source URL = %q, want %q", result.URL, server.URL)
+			}
+			if tc.status == http.StatusNotModified {
+				if !result.NotModified || result.Icon.Raster != nil || len(result.Icon.SVG) != 0 || result.ETag != tc.etag || result.LastModified != tc.lastModified {
+					t.Fatalf("304 result = %+v", result)
+				}
+				return
+			}
+			if result.NotModified || !bytes.Equal(result.Icon.SVG, payload) || result.ETag != tc.responseETag || result.LastModified != "" {
+				t.Fatalf("200 result = %+v", result)
+			}
+		})
 	}
 }
 

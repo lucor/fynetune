@@ -37,6 +37,25 @@ type RecentStation struct {
 type Store struct{ p fyne.Preferences }
 
 func New(a fyne.App) *Store { return &Store{p: a.Preferences()} }
+
+// Clear removes all preferences owned by FyneTune.
+func Clear(preferences fyne.Preferences) {
+	for _, key := range []string{
+		"stations",
+		"station_defaults_version",
+		"selected_station_id",
+		"discovery_country",
+		"appearance",
+		"volume",
+		"auto_play",
+		"reconnect_enabled",
+		"start_minimized",
+		recentStationsPreference,
+	} {
+		preferences.RemoveValue(key)
+	}
+}
+
 func (s *Store) Load() (Settings, error) {
 	v := Settings{Reconnect: true, Volume: .75, Appearance: "system"}
 	raw := s.p.String("stations")
