@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 )
 
@@ -161,14 +162,14 @@ func newDiscoverSection(w *Window) *discoverSection {
 	})
 	dropdown.Importance = widget.LowImportance
 	s.country.ActionItem = dropdown
-	s.country.SetPlaceHolder("Country")
+	s.country.SetPlaceHolder("Any country")
 	s.countryPopup = widget.NewPopUp(s.countryList, w.window.Canvas())
 	s.countryPopup.Hide()
 	s.genre = widget.NewSelect(discoverGenreLabels(), nil)
-	s.genre.PlaceHolder = "Genre"
+	s.genre.SetSelected("Any genre")
 	s.genre.OnChanged = func(string) { s.scheduleQuery() }
 	s.codec = widget.NewSelect([]string{"Any codec", "MP3", "AAC", "AAC+", "OGG", "Opus"}, nil)
-	s.codec.PlaceHolder = "Codec"
+	s.codec.SetSelected("Any codec")
 	s.codec.OnChanged = func(string) { s.scheduleQuery() }
 	filters := container.NewGridWithColumns(3, s.country, s.genre, s.codec)
 	s.count.Importance = widget.LowImportance
@@ -181,6 +182,11 @@ func newDiscoverSection(w *Window) *discoverSection {
 	header := container.NewPadded(container.NewVBox(s.name, filters, summary))
 	s.Container = container.NewBorder(header, nil, nil, nil, s.results)
 	s.loadCountries()
+	if w.directory != nil {
+		s.status.SetText("Loading popular stations…")
+		s.status.Show()
+		s.fetchStations(radiobrowser.Query{Limit: discoverRequestLimit}, s.requestID)
+	}
 	return s
 }
 
@@ -267,18 +273,12 @@ func (s *discoverSection) scheduleQuery() {
 	if s.codec.Selected != "" && s.codec.Selected != "Any codec" {
 		query.Codec = s.codec.Selected
 	}
-	if query.Name == "" && query.CountryCode == "" && len(query.Tags) == 0 && query.Codec == "" {
-		s.rows.setStations(nil)
-		s.results.Objects = nil
-		s.results.Refresh()
-		s.count.SetText("")
-		s.count.Hide()
-		s.status.SetText("")
-		s.status.Hide()
-		return
-	}
 	s.count.Hide()
-	s.status.SetText("Finding stations…")
+	if isUnfilteredDiscoverQuery(query) {
+		s.status.SetText("Loading popular stations…")
+	} else {
+		s.status.SetText("Finding stations…")
+	}
 	s.status.Show()
 	s.timer = time.AfterFunc(350*time.Millisecond, func() {
 		fyne.Do(func() { s.fetchStations(query, requestID) })
@@ -315,7 +315,13 @@ func (s *discoverSection) fetchStations(query radiobrowser.Query, requestID uint
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	s.cancel = cancel
 	go func() {
-		stations, err := s.window.directory.Search(ctx, query)
+		var stations []radio.Station
+		var err error
+		if isUnfilteredDiscoverQuery(query) {
+			stations, err = s.window.directory.Popular(ctx, query.Limit)
+		} else {
+			stations, err = s.window.directory.Search(ctx, query)
+		}
 		cancel()
 		fyne.Do(func() {
 			if requestID != s.requestID {
@@ -341,13 +347,26 @@ func (s *discoverSection) fetchStations(query radiobrowser.Query, requestID uint
 			} else {
 				s.results.Objects = []fyne.CanvasObject{s.rows.list}
 			}
-			s.count.SetText(stationCount(len(stations)))
-			s.count.Show()
+			if len(stations) == 0 {
+				s.count.Hide()
+			} else {
+				if isUnfilteredDiscoverQuery(query) {
+					s.count.SetText(fmt.Sprintf("Most popular %d stations", len(stations)))
+				} else {
+					s.count.SetText(stationCount(len(stations)))
+				}
+				s.count.Show()
+			}
 			s.status.SetText("")
 			s.status.Hide()
 			s.results.Refresh()
 		})
 	}()
+}
+
+// isUnfilteredDiscoverQuery reports whether the query has no active filters.
+func isUnfilteredDiscoverQuery(query radiobrowser.Query) bool {
+	return query.Name == "" && query.CountryCode == "" && len(query.Tags) == 0 && query.Codec == ""
 }
 
 // discoverCountryLabel displays the country flag beside its localized name.
@@ -370,7 +389,7 @@ func discoverEmptyState(title, description string) fyne.CanvasObject {
 // stationCount formats a result total with the correct singular form.
 func stationCount(count int) string {
 	if count == 1 {
-		return "1 station found"
+		return "Showing 1 station"
 	}
-	return fmt.Sprintf("%d stations found", count)
+	return fmt.Sprintf("Showing %d stations", count)
 }

@@ -54,11 +54,11 @@ func TestDiscoverCountryPicker(t *testing.T) {
 	if s.countryValue.Code != "US" || s.country.Text != discoverCountryLabel(s.countryValue) || s.countryPopup.Visible() {
 		t.Fatal("Escape must restore the previous country and dismiss suggestions")
 	}
-	// Choosing Any country removes the filter and resets the empty search state.
+	// Choosing Any country removes only that filter and restores global results.
 	s.showCountryOptions("")
 	s.countryList.Select(0)
-	if s.countryValue.Code != "" || s.count.Visible() || s.status.Visible() {
-		t.Fatal("Any country must clear the country filter")
+	if s.countryValue.Code != "" || s.count.Visible() || !s.status.Visible() || s.status.Text != "Loading popular stations…" {
+		t.Fatal("Any country must clear its filter and load global popular stations")
 	}
 	s.name.SetText("Jazz")
 	if !s.status.Visible() {
@@ -67,8 +67,8 @@ func TestDiscoverCountryPicker(t *testing.T) {
 	clear := s.name.ActionItem.(*widget.Button)
 	position := app.Driver().AbsolutePositionForObject(clear)
 	test.TapCanvas(window.Canvas(), position.Add(fyne.NewPos(clear.Size().Width/2, clear.Size().Height/2)))
-	if s.name.Text != "" || s.status.Visible() {
-		t.Fatal("the entry's clear button must reset an unfiltered search")
+	if s.name.Text != "" || !s.status.Visible() {
+		t.Fatal("clearing the station name must restore the unfiltered popular results")
 	}
 }
 
