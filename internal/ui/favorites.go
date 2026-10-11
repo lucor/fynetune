@@ -40,9 +40,7 @@ func newFavoritesSection(w *Window) *favoritesSection {
 		saved:    saved,
 		subtitle: subtitle,
 	}
-	section.Container = container.NewBorder(
-		widget.NewLabel("Your saved radio stations"), nil, nil, nil, content,
-	)
+	section.Container = content
 	section.refresh()
 	return section
 }
