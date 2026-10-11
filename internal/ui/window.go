@@ -108,6 +108,9 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		}
 		lastVariant = variant
 		w.refreshIconTheme()
+		if w.onboarding != nil {
+			w.onboarding.refreshTheme()
+		}
 		sectionTitleColor := settings.Theme().Color(sectionTitleColorName, variant)
 		if w.sectionHeader != nil {
 			w.sectionHeader.Refresh()
@@ -155,6 +158,9 @@ func (w *Window) setAppearance(appearance string) {
 	w.theme.appearance = appearance
 	w.app.Settings().SetTheme(w.theme)
 	w.refreshIconTheme()
+	if w.onboarding != nil {
+		w.onboarding.refreshTheme()
+	}
 	if w.sectionHeader != nil {
 		w.sectionHeader.Refresh()
 	}
@@ -193,13 +199,13 @@ func (w *Window) refreshIconTheme() {
 		w.playerBar.refreshIconTheme()
 	}
 	if w.home != nil {
-		w.home.rows.refreshIconTheme()
+		w.home.rows.refreshTheme()
 	}
 	if w.favorites != nil {
-		w.favorites.rows.refreshIconTheme()
+		w.favorites.rows.refreshTheme()
 	}
 	if w.recentSection != nil {
-		w.recentSection.rows.refreshIconTheme()
+		w.recentSection.rows.refreshTheme()
 	}
 }
 

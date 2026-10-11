@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"image/color"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -14,6 +15,31 @@ import (
 	"go.lucor.dev/fynetune/internal/storage"
 	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
+
+func TestOnboardingCanvasColorsFollowThemeChanges(t *testing.T) {
+	app := test.NewTempApp(t)
+	appTheme := &brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceDark}
+	app.Settings().SetTheme(appTheme)
+	o := newOnboarding(&Window{app: app})
+	o.welcomeScreen()
+
+	if got, want := color.NRGBAModel.Convert(o.choiceLabel.Color).(color.NRGBA), color.NRGBAModel.Convert(theme.Color(theme.ColorNameForeground)).(color.NRGBA); got != want {
+		t.Fatalf("dark welcome text color = %#v, want %#v", got, want)
+	}
+	if got, want := color.NRGBAModel.Convert(o.themeRects[0].rect.FillColor).(color.NRGBA), color.NRGBAModel.Convert(theme.Color(theme.ColorNameInputBackground)).(color.NRGBA); got != want {
+		t.Fatalf("dark country card color = %#v, want %#v", got, want)
+	}
+
+	appTheme.appearance = appearanceLight
+	app.Settings().SetTheme(appTheme)
+	o.refreshTheme()
+	if got, want := color.NRGBAModel.Convert(o.choiceLabel.Color).(color.NRGBA), color.NRGBAModel.Convert(theme.Color(theme.ColorNameForeground)).(color.NRGBA); got != want {
+		t.Fatalf("light welcome text color = %#v, want %#v", got, want)
+	}
+	if got, want := color.NRGBAModel.Convert(o.themeRects[0].rect.FillColor).(color.NRGBA), color.NRGBAModel.Convert(theme.Color(theme.ColorNameInputBackground)).(color.NRGBA); got != want {
+		t.Fatalf("light country card color = %#v, want %#v", got, want)
+	}
+}
 
 func TestCountryCodeFromLocale(t *testing.T) {
 	tests := []struct {

@@ -196,10 +196,14 @@ func (s *stationList) updateRow(id widget.ListItemID, object fyne.CanvasObject) 
 	s.setFavoriteIcon(row)
 }
 
-// refreshIconTheme updates favorite icons in rows currently held by this list.
-func (s *stationList) refreshIconTheme() {
+// refreshTheme updates favorite icons and badge colors in rows held by this list.
+func (s *stationList) refreshTheme() {
 	for _, row := range s.rows {
 		s.setFavoriteIcon(row)
+		if row.codecBadge != nil {
+			row.codecBadge.SetColors(theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+			row.bitrateBadge.SetColors(theme.Color(stationBadgeColorName), theme.Color(stationMetadataColorName))
+		}
 	}
 }
 

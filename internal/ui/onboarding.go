@@ -52,6 +52,18 @@ type onboarding struct {
 	loadError       *widget.Label
 	countryActivity *widget.Activity
 	loadingDialog   dialog.Dialog
+	themeTexts      []onboardingText
+	themeRects      []onboardingRectangle
+}
+
+type onboardingText struct {
+	text      *canvas.Text
+	colorName fyne.ThemeColorName
+}
+
+type onboardingRectangle struct {
+	rect      *canvas.Rectangle
+	colorName fyne.ThemeColorName
 }
 
 // countryRow keeps the standard list row objects used to display a country.
@@ -109,10 +121,10 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 	} else if o.suggested.Name != "" {
 		countryName = o.suggested.Name
 	}
-	o.choiceLabel = canvas.NewText(countryName, theme.Color(theme.ColorNameForeground))
+	o.choiceLabel = o.newThemedText(countryName, theme.ColorNameForeground)
 	o.choiceLabel.TextSize = theme.Size(theme.SizeNameSubHeadingText)
 	o.choiceLabel.TextStyle.Bold = true
-	flagIcon := suggestedFlag(o.suggestedCode)
+	flagIcon := o.suggestedFlag(o.suggestedCode)
 	selection := container.NewBorder(
 		nil,
 		nil,
@@ -120,21 +132,21 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 		nil,
 		container.NewVBox(
 			o.choiceLabel,
-			mutedLabel("Most popular stations in your area"),
+			o.mutedLabel("Most popular stations in your area"),
 		),
 	)
 	suggestedContent := container.NewPadded(container.NewVBox(
 		widget.NewLabel("Suggested from your system"),
 		selection,
 	))
-	suggestedBackground := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
+	suggestedBackground := o.newThemedRectangle(theme.ColorNameInputBackground)
 	suggestedBackground.CornerRadius = theme.Size(theme.SizeNameCardRadius)
 	suggested := container.NewStack(suggestedBackground, suggestedContent)
 	description := widget.NewLabel("Discover and listen to radio stations\nfrom around the world.")
 	description.Alignment = fyne.TextAlignCenter
 	description.Wrapping = fyne.TextWrapWord
 	or := container.NewBorder(nil, nil, widget.NewSeparator(), widget.NewSeparator(),
-		container.NewCenter(mutedLabel("or")))
+		container.NewCenter(o.mutedLabel("or")))
 	top := container.NewVBox(
 		o.logo(),
 		verticalSpace(24),
@@ -151,7 +163,7 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 		verticalSpace(16),
 		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 50), o.chooseCountry)),
 		verticalSpace(24),
-		container.NewCenter(mutedLabel("You can change this later in Settings.")),
+		container.NewCenter(o.mutedLabel("You can change this later in Settings.")),
 	)
 	content := container.NewVBox(
 		verticalSpace(68),
@@ -174,7 +186,7 @@ func (o *onboarding) showCountryPicker() {
 	o.list = widget.NewList(
 		func() int { return len(o.filtered) },
 		func() fyne.CanvasObject {
-			flag := canvas.NewText("", theme.Color(theme.ColorNameForeground))
+			flag := o.newThemedText("", theme.ColorNameForeground)
 			flag.TextSize = theme.Size(theme.SizeNameHeadingText)
 			name := widget.NewLabel("")
 			row := container.NewBorder(nil, nil,
@@ -229,7 +241,7 @@ func (o *onboarding) showCountryPicker() {
 	})
 	o.continueCountry.Importance = widget.HighImportance
 	o.continueCountry.Disable()
-	heading := onboardingHeading("Choose your country")
+	heading := o.onboardingHeading("Choose your country")
 	description := widget.NewLabel("Select a country to discover local radio stations.")
 	description.Wrapping = fyne.TextWrapWord
 	top := container.NewVBox(
@@ -373,18 +385,18 @@ func (o *onboarding) showCountryLoading() {
 	note.Wrapping = fyne.TextWrapWord
 	noteContent := container.NewBorder(
 		nil, nil,
-		container.NewPadded(widget.NewIcon(icons.Info())),
+		container.NewPadded(o.window.newThemeIcon(icons.Info)),
 		nil,
 		note,
 	)
-	noteBackground := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
+	noteBackground := o.newThemedRectangle(theme.ColorNameInputBackground)
 	noteBackground.CornerRadius = theme.Size(theme.SizeNameCardRadius)
 	noteBox := container.NewStack(noteBackground, noteContent)
 	o.loadContent = container.NewVBox(
 		verticalSpace(80),
 		container.NewCenter(o.logo()),
 		verticalSpace(24),
-		container.NewCenter(onboardingHeading("Almost ready")),
+		container.NewCenter(o.onboardingHeading("Almost ready")),
 		verticalSpace(8),
 		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 56), o.loadDescription)),
 		verticalSpace(24),
@@ -507,7 +519,7 @@ func (o *onboarding) welcomeTitle() fyne.CanvasObject {
 		container.NewGridWrap(fyne.NewSize(1, theme.Size(theme.SizeNamePadding)/2), layout.NewSpacer()),
 		nil, nil, nil, wordmarkImage,
 	)
-	text := canvas.NewText("Welcome to", theme.Color(theme.ColorNameForeground))
+	text := o.newThemedText("Welcome to", theme.ColorNameForeground)
 	text.TextSize = theme.Size(theme.SizeNameHeadingText)
 	text.TextStyle.Bold = true
 	return container.NewCenter(container.NewHBox(
@@ -517,16 +529,16 @@ func (o *onboarding) welcomeTitle() fyne.CanvasObject {
 }
 
 // onboardingHeading renders a large heading using the active Fyne theme.
-func onboardingHeading(text string) fyne.CanvasObject {
-	heading := canvas.NewText(text, theme.Color(theme.ColorNameForeground))
+func (o *onboarding) onboardingHeading(text string) fyne.CanvasObject {
+	heading := o.newThemedText(text, theme.ColorNameForeground)
 	heading.TextSize = theme.Size(theme.SizeNameHeadingText)
 	heading.TextStyle.Bold = true
 	return heading
 }
 
 // mutedLabel uses the active theme's placeholder color for supporting text.
-func mutedLabel(text string) fyne.CanvasObject {
-	label := canvas.NewText(text, theme.Color(theme.ColorNamePlaceHolder))
+func (o *onboarding) mutedLabel(text string) fyne.CanvasObject {
+	label := o.newThemedText(text, theme.ColorNamePlaceHolder)
 	label.TextSize = theme.Size(theme.SizeNameText)
 	return label
 }
@@ -583,10 +595,36 @@ func countryFlag(code string) string {
 }
 
 // suggestedFlag creates the enlarged country flag emoji for the welcome view.
-func suggestedFlag(code string) fyne.CanvasObject {
-	flag := canvas.NewText(countryFlag(code), theme.Color(theme.ColorNameForeground))
+func (o *onboarding) suggestedFlag(code string) fyne.CanvasObject {
+	flag := o.newThemedText(countryFlag(code), theme.ColorNameForeground)
 	flag.TextSize = theme.Size(theme.SizeNameHeadingText) * 2
 	return flag
+}
+
+// newThemedText creates canvas text that can follow later theme changes.
+func (o *onboarding) newThemedText(text string, colorName fyne.ThemeColorName) *canvas.Text {
+	label := canvas.NewText(text, theme.Color(colorName))
+	o.themeTexts = append(o.themeTexts, onboardingText{text: label, colorName: colorName})
+	return label
+}
+
+// newThemedRectangle creates a canvas background that can follow theme changes.
+func (o *onboarding) newThemedRectangle(colorName fyne.ThemeColorName) *canvas.Rectangle {
+	background := canvas.NewRectangle(theme.Color(colorName))
+	o.themeRects = append(o.themeRects, onboardingRectangle{rect: background, colorName: colorName})
+	return background
+}
+
+// refreshTheme updates canvas colors that Fyne cannot refresh from a theme by itself.
+func (o *onboarding) refreshTheme() {
+	for _, item := range o.themeTexts {
+		item.text.Color = theme.Color(item.colorName)
+		item.text.Refresh()
+	}
+	for _, item := range o.themeRects {
+		item.rect.FillColor = theme.Color(item.colorName)
+		item.rect.Refresh()
+	}
 }
 
 // systemLocaleCountryCode prefers locale environment variables and falls back to Fyne's system locale.

@@ -164,8 +164,12 @@ func (w *Window) settingsCard(content fyne.CanvasObject) fyne.CanvasObject {
 		settingsCardTheme{Theme: w.app.Settings().Theme()})
 }
 
-// refreshSettingsTheme updates the version badge when the appearance changes.
+// refreshSettingsTheme updates canvas colors and badge colors after theme changes.
 func (w *Window) refreshSettingsTheme() {
+	if w.settingsCountryFlag != nil {
+		w.settingsCountryFlag.Color = theme.Color(theme.ColorNameForeground)
+		w.settingsCountryFlag.Refresh()
+	}
 	if w.settingsVersionBadge != nil {
 		w.settingsVersionBadge.SetColors(theme.Color(theme.ColorNameSelection), theme.Color(stationMetadataColorName))
 	}

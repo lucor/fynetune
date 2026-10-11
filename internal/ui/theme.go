@@ -132,7 +132,9 @@ type settingsCardTheme struct {
 
 // Color keeps settings cards distinct from the page and improves control contrast.
 func (t settingsCardTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
-	dark := variant == theme.VariantDark
+	background := t.Theme.Color(theme.ColorNameBackground, variant)
+	r, g, b, _ := background.RGBA()
+	dark := uint64(r)+uint64(g)+uint64(b) < 3*0x8000
 	switch name {
 	case theme.ColorNameBackground, theme.ColorNameInputBackground:
 		if dark {

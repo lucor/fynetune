@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -10,6 +11,29 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/storage"
 )
+
+func TestSettingsCardThemeFollowsApplicationAppearance(t *testing.T) {
+	base := theme.DefaultTheme()
+	cases := []struct {
+		name       string
+		appearance string
+		variant    fyne.ThemeVariant
+		want       color.NRGBA
+	}{
+		{name: "dark app on light system", appearance: appearanceDark, variant: theme.VariantLight, want: settingsSurfaceDark},
+		{name: "light app on dark system", appearance: appearanceLight, variant: theme.VariantDark, want: settingsSurfaceLight},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			appTheme := &brandTheme{Theme: base, appearance: tc.appearance}
+			cardTheme := settingsCardTheme{Theme: appTheme}
+			got := color.NRGBAModel.Convert(cardTheme.Color(theme.ColorNameBackground, tc.variant)).(color.NRGBA)
+			if got != tc.want {
+				t.Fatalf("settings background = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
 
 // TestSettingsControlsPersistPreferences checks that the redesigned controls
 // still update playback preferences and the stored application appearance.
