@@ -28,13 +28,15 @@ const defaultBaseURL = "https://all.api.radio-browser.info"
 
 // Query contains the filters and result limit for a station search.
 type Query struct {
-	Name         string // Station name filter.
-	Country      string // Country name filter.
-	CountryCode  string // ISO 3166-1 alpha-2 country code filter.
-	CountryExact bool   // Match Country exactly instead of searching within it.
-	Tag          string // Tag filter.
-	Codec        string // Audio codec filter.
-	Limit        int    // Maximum results; values outside 1..100 use the default.
+	Name         string   // Station name filter.
+	Country      string   // Country name filter.
+	CountryCode  string   // ISO 3166-1 alpha-2 country code filter.
+	CountryExact bool     // Match Country exactly instead of searching within it.
+	Tag          string   // Tag filter.
+	TagExact     bool     // Match Tag exactly instead of searching within it.
+	Tags         []string // Alternative tags; any matching tag can include a station.
+	Codec        string   // Audio codec filter.
+	Limit        int      // Maximum results; values outside 1..100 use the default.
 }
 
 // Country is a country name and ISO 3166-1 alpha-2 code from Radio Browser.
@@ -74,7 +76,44 @@ func NewWithBaseURL(baseURL string, client *http.Client) *Client {
 }
 
 // Search finds stations matching the supplied filters and maps valid results to radio stations.
+// When Tags contains alternatives, each tag is searched separately and the
+// results are interleaved by rank with duplicate stations removed.
 func (c *Client) Search(ctx context.Context, query Query) ([]radio.Station, error) {
+	if len(query.Tags) == 0 {
+		return c.search(ctx, query)
+	}
+
+	groups := make([][]radio.Station, 0, len(query.Tags))
+	seenTags := make(map[string]struct{}, len(query.Tags))
+	for _, tag := range query.Tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		key := strings.ToLower(tag)
+		if _, exists := seenTags[key]; exists {
+			continue
+		}
+		seenTags[key] = struct{}{}
+
+		tagQuery := query
+		tagQuery.Tag = tag
+		tagQuery.TagExact = true
+		tagQuery.Tags = nil
+		stations, err := c.search(ctx, tagQuery)
+		if err != nil {
+			return nil, fmt.Errorf("search stations by tag %q: %w", tag, err)
+		}
+		groups = append(groups, stations)
+	}
+	if len(groups) == 0 {
+		return c.search(ctx, query)
+	}
+	return mergeStationGroups(groups, resultLimit(query.Limit)), nil
+}
+
+// search performs one station search with at most one tag filter.
+func (c *Client) search(ctx context.Context, query Query) ([]radio.Station, error) {
 	values := url.Values{}
 	if name := strings.TrimSpace(query.Name); name != "" {
 		values.Set("name", name)
@@ -91,6 +130,9 @@ func (c *Client) Search(ctx context.Context, query Query) ([]radio.Station, erro
 	}
 	if tag := strings.TrimSpace(query.Tag); tag != "" {
 		values.Set("tag", tag)
+		if query.TagExact {
+			values.Set("tagExact", "true")
+		}
 	}
 	if codec := strings.TrimSpace(query.Codec); codec != "" {
 		values.Set("codec", codec)
@@ -100,6 +142,34 @@ func (c *Client) Search(ctx context.Context, query Query) ([]radio.Station, erro
 	values.Set("reverse", "true")
 	setLimit(values, query.Limit)
 	return c.fetch(ctx, "/json/stations/search", values)
+}
+
+// mergeStationGroups combines tag alternatives in rank order and removes duplicate stations.
+func mergeStationGroups(groups [][]radio.Station, limit int) []radio.Station {
+	stations := make([]radio.Station, 0, limit)
+	seen := make(map[string]struct{})
+	for rank := 0; len(stations) < limit; rank++ {
+		foundAtRank := false
+		for _, group := range groups {
+			if rank >= len(group) {
+				continue
+			}
+			foundAtRank = true
+			station := group[rank]
+			if _, exists := seen[station.ID]; exists {
+				continue
+			}
+			seen[station.ID] = struct{}{}
+			stations = append(stations, station)
+			if len(stations) == limit {
+				break
+			}
+		}
+		if !foundAtRank {
+			break
+		}
+	}
+	return stations
 }
 
 // Popular returns the most-clicked stations up to the requested limit.
@@ -179,10 +249,15 @@ func (c *Client) getJSON(ctx context.Context, path string, query url.Values, tar
 
 // setLimit applies the API's supported result range and default limit.
 func setLimit(values url.Values, limit int) {
+	values.Set("limit", strconv.Itoa(resultLimit(limit)))
+}
+
+// resultLimit applies Radio Browser's supported range and default.
+func resultLimit(limit int) int {
 	if limit <= 0 || limit > 100 {
-		limit = 30
+		return 30
 	}
-	values.Set("limit", strconv.Itoa(limit))
+	return limit
 }
 
 // stationRecord mirrors the fields consumed from a Radio Browser station response.

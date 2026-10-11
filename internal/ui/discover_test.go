@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"reflect"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -68,5 +69,43 @@ func TestDiscoverCountryPicker(t *testing.T) {
 	test.TapCanvas(window.Canvas(), position.Add(fyne.NewPos(clear.Size().Width/2, clear.Size().Height/2)))
 	if s.name.Text != "" || s.status.Visible() {
 		t.Fatal("the entry's clear button must reset an unfiltered search")
+	}
+}
+
+func TestDiscoverGenresUseCuratedRadioBrowserTags(t *testing.T) {
+	want := []discoverGenre{
+		{label: "Pop", tags: []string{"pop", "pop music", "top 40", "dance pop"}},
+		{label: "Rock", tags: []string{"rock", "classic rock", "alternative rock", "pop rock"}},
+		{label: "Dance", tags: []string{"dance", "disco", "dance pop"}},
+		{label: "Electronic", tags: []string{"electronic", "house", "techno", "trance"}},
+		{label: "80s", tags: []string{"80s"}},
+		{label: "90s", tags: []string{"90s"}},
+		{label: "Jazz & Blues", tags: []string{"jazz", "smooth jazz", "blues"}},
+		{label: "Classical", tags: []string{"classical", "opera", "baroque"}},
+		{label: "Hip-Hop & R&B", tags: []string{"hip hop", "rap", "rnb", "r&b"}},
+		{label: "Classic Hits", tags: []string{"oldies", "classic hits", "retro"}},
+		{label: "70s", tags: []string{"70s"}},
+		{label: "2000s", tags: []string{"2000s", "00s"}},
+		{label: "Metal", tags: []string{"metal", "heavy metal"}},
+		{label: "Country & Folk", tags: []string{"country", "folk"}},
+		{label: "Soul & Funk", tags: []string{"soul", "funk"}},
+		{label: "Chill & Ambient", tags: []string{"chillout", "ambient", "lounge", "easy listening"}},
+		{label: "Latin", tags: []string{"latin", "salsa", "reggaeton", "bachata"}},
+		{label: "News & Talk", tags: []string{"news", "talk", "news talk", "local news"}},
+		{label: "Sports", tags: []string{"sports", "sports talk"}},
+	}
+	if !reflect.DeepEqual(discoverGenres, want) {
+		t.Fatalf("discover genres = %#v, want %#v", discoverGenres, want)
+	}
+
+	labels := discoverGenreLabels()
+	if labels[0] != "Any genre" || len(labels) != len(want)+1 {
+		t.Fatalf("genre labels = %#v", labels)
+	}
+	if tags := discoverGenreTags("2000s"); !reflect.DeepEqual(tags, []string{"2000s", "00s"}) {
+		t.Fatalf("2000s tags = %#v", tags)
+	}
+	if tags := discoverGenreTags("Any genre"); len(tags) != 0 {
+		t.Fatalf("Any genre tags = %#v, want none", tags)
 	}
 }

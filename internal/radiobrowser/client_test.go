@@ -50,6 +50,55 @@ func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 	}
 }
 
+// TestSearchMergesAlternativeTags checks OR-style tag searches preserve filters,
+// deduplicate stations, and return alternatives in rank order.
+func TestSearchMergesAlternativeTags(t *testing.T) {
+	responses := map[string]string{
+		"pop":    `[{"stationuuid":"a","name":"A","url":"https://radio.test/a"},{"stationuuid":"shared","name":"Shared","url":"https://radio.test/shared"}]`,
+		"rock":   `[{"stationuuid":"b","name":"B","url":"https://radio.test/b"},{"stationuuid":"shared","name":"Shared","url":"https://radio.test/shared"}]`,
+		"top 40": `[{"stationuuid":"c","name":"C","url":"https://radio.test/c"},{"stationuuid":"d","name":"D","url":"https://radio.test/d"}]`,
+	}
+	var requestedTags []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tag := r.URL.Query().Get("tag")
+		requestedTags = append(requestedTags, tag)
+		if got := r.URL.Query().Get("countrycode"); got != "IT" {
+			t.Errorf("countrycode = %q, want IT", got)
+		}
+		if got := r.URL.Query().Get("codec"); got != "MP3" {
+			t.Errorf("codec = %q, want MP3", got)
+		}
+		if got := r.URL.Query().Get("name"); got != "radio" {
+			t.Errorf("name = %q, want radio", got)
+		}
+		if got := r.URL.Query().Get("limit"); got != "5" {
+			t.Errorf("limit = %q, want 5", got)
+		}
+		if got := r.URL.Query().Get("tagExact"); got != "true" {
+			t.Errorf("tagExact = %q, want true", got)
+		}
+		_, _ = w.Write([]byte(responses[tag]))
+	}))
+	defer server.Close()
+
+	stations, err := NewWithBaseURL(server.URL, server.Client()).Search(context.Background(), Query{
+		Name: "radio", CountryCode: "IT", Codec: "MP3", Tags: []string{"pop", "rock", "top 40", " POP "}, Limit: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"pop", "rock", "top 40"}; !reflect.DeepEqual(requestedTags, want) {
+		t.Fatalf("requested tags = %#v, want %#v", requestedTags, want)
+	}
+	var gotIDs []string
+	for _, station := range stations {
+		gotIDs = append(gotIDs, station.ID)
+	}
+	if want := []string{"a", "b", "c", "shared", "d"}; !reflect.DeepEqual(gotIDs, want) {
+		t.Fatalf("station IDs = %#v, want %#v", gotIDs, want)
+	}
+}
+
 // TestCountriesReturnsNamesAndCodes checks country names and codes are returned.
 func TestCountriesReturnsNamesAndCodes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

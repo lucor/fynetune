@@ -15,6 +15,34 @@ import (
 
 const discoverRequestLimit = 20
 
+type discoverGenre struct {
+	label string
+	tags  []string
+}
+
+// discoverGenres maps readable filter labels to alternative Radio Browser tags.
+var discoverGenres = []discoverGenre{
+	{label: "Pop", tags: []string{"pop", "pop music", "top 40", "dance pop"}},
+	{label: "Rock", tags: []string{"rock", "classic rock", "alternative rock", "pop rock"}},
+	{label: "Dance", tags: []string{"dance", "disco", "dance pop"}},
+	{label: "Electronic", tags: []string{"electronic", "house", "techno", "trance"}},
+	{label: "80s", tags: []string{"80s"}},
+	{label: "90s", tags: []string{"90s"}},
+	{label: "Jazz & Blues", tags: []string{"jazz", "smooth jazz", "blues"}},
+	{label: "Classical", tags: []string{"classical", "opera", "baroque"}},
+	{label: "Hip-Hop & R&B", tags: []string{"hip hop", "rap", "rnb", "r&b"}},
+	{label: "Classic Hits", tags: []string{"oldies", "classic hits", "retro"}},
+	{label: "70s", tags: []string{"70s"}},
+	{label: "2000s", tags: []string{"2000s", "00s"}},
+	{label: "Metal", tags: []string{"metal", "heavy metal"}},
+	{label: "Country & Folk", tags: []string{"country", "folk"}},
+	{label: "Soul & Funk", tags: []string{"soul", "funk"}},
+	{label: "Chill & Ambient", tags: []string{"chillout", "ambient", "lounge", "easy listening"}},
+	{label: "Latin", tags: []string{"latin", "salsa", "reggaeton", "bachata"}},
+	{label: "News & Talk", tags: []string{"news", "talk", "news talk", "local news"}},
+	{label: "Sports", tags: []string{"sports", "sports talk"}},
+}
+
 // discoverSection browses Radio Browser and shows results in the shared station list.
 type discoverSection struct {
 	*fyne.Container
@@ -136,7 +164,7 @@ func newDiscoverSection(w *Window) *discoverSection {
 	s.country.SetPlaceHolder("Country")
 	s.countryPopup = widget.NewPopUp(s.countryList, w.window.Canvas())
 	s.countryPopup.Hide()
-	s.genre = widget.NewSelect([]string{"Any genre", "Pop", "Rock", "Jazz", "News", "Classical", "Electronic", "Talk", "Dance", "Oldies", "Ambient", "Alternative", "Metal", "Country", "Hip hop"}, nil)
+	s.genre = widget.NewSelect(discoverGenreLabels(), nil)
 	s.genre.PlaceHolder = "Genre"
 	s.genre.OnChanged = func(string) { s.scheduleQuery() }
 	s.codec = widget.NewSelect([]string{"Any codec", "MP3", "AAC", "AAC+", "OGG", "Opus"}, nil)
@@ -235,13 +263,11 @@ func (s *discoverSection) scheduleQuery() {
 	if s.countryValue.Code != "" {
 		query.CountryCode = s.countryValue.Code
 	}
-	if s.genre.Selected != "" && s.genre.Selected != "Any genre" {
-		query.Tag = s.genre.Selected
-	}
+	query.Tags = discoverGenreTags(s.genre.Selected)
 	if s.codec.Selected != "" && s.codec.Selected != "Any codec" {
 		query.Codec = s.codec.Selected
 	}
-	if query.Name == "" && query.CountryCode == "" && query.Tag == "" && query.Codec == "" {
+	if query.Name == "" && query.CountryCode == "" && len(query.Tags) == 0 && query.Codec == "" {
 		s.rows.setStations(nil)
 		s.results.Objects = nil
 		s.results.Refresh()
@@ -257,6 +283,26 @@ func (s *discoverSection) scheduleQuery() {
 	s.timer = time.AfterFunc(350*time.Millisecond, func() {
 		fyne.Do(func() { s.fetchStations(query, requestID) })
 	})
+}
+
+// discoverGenreLabels lists curated, user-facing genre names for the filter.
+func discoverGenreLabels() []string {
+	labels := make([]string, 0, len(discoverGenres)+1)
+	labels = append(labels, "Any genre")
+	for _, genre := range discoverGenres {
+		labels = append(labels, genre.label)
+	}
+	return labels
+}
+
+// discoverGenreTags returns alternative Radio Browser tags for a selected genre.
+func discoverGenreTags(label string) []string {
+	for _, genre := range discoverGenres {
+		if genre.label == label {
+			return append([]string(nil), genre.tags...)
+		}
+	}
+	return nil
 }
 
 // fetchStations loads matching stations and applies only the latest response.
