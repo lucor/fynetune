@@ -15,6 +15,25 @@ import (
 	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
 
+func TestCountryCodeFromLocale(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   string
+	}{
+		{locale: "it_IT.UTF-8", want: "IT"},
+		{locale: "en-US", want: "US"},
+		{locale: "en", want: ""},
+		{locale: "C", want: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			if got := countryCodeFromLocale(test.locale); got != test.want {
+				t.Fatalf("countryCodeFromLocale(%q) = %q, want %q", test.locale, got, test.want)
+			}
+		})
+	}
+}
+
 // TestSettingsCountryChange keeps the current view and data until loading succeeds.
 func TestSettingsCountryChange(t *testing.T) {
 	for _, fail := range []bool{false, true} {

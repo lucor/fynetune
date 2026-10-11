@@ -98,7 +98,7 @@ func countryOptionFlag(code string) string {
 	return countryFlag(code)
 }
 
-// countryFromRadioBrowser uses the CLDR English region name when its code is recognized.
+// countryFromRadioBrowser maps a directory record to its normalized UI country.
 func countryFromRadioBrowser(source radiobrowser.Country) Country {
 	code := strings.ToUpper(strings.TrimSpace(source.Code))
 	name := strings.TrimSpace(source.Name)
@@ -106,6 +106,24 @@ func countryFromRadioBrowser(source radiobrowser.Country) Country {
 		name = displayName
 	}
 	return Country{Code: code, Name: name}
+}
+
+// countriesFromRadioBrowser normalizes directory entries and removes duplicate ISO codes.
+func countriesFromRadioBrowser(sources []radiobrowser.Country) []Country {
+	countries := make([]Country, 0, len(sources))
+	seen := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		country := countryFromRadioBrowser(source)
+		if country.Name == "" {
+			continue
+		}
+		if _, exists := seen[country.Code]; exists {
+			continue
+		}
+		seen[country.Code] = struct{}{}
+		countries = append(countries, country)
+	}
+	return countries
 }
 
 // stationCountryName returns a CLDR English name based on the station's ISO code.

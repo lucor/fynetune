@@ -202,13 +202,7 @@ func (s *discoverSection) loadCountries() {
 		if err != nil {
 			return
 		}
-		items := make([]Country, 0, len(countries))
-		for _, country := range countries {
-			item := countryFromRadioBrowser(country)
-			if item.Code != "" && item.Name != "" {
-				items = append(items, item)
-			}
-		}
+		items := countriesFromRadioBrowser(countries)
 		fyne.Do(func() {
 			s.countryItems = items
 			if s.countryPopup.Visible() {

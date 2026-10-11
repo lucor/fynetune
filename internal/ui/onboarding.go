@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -277,13 +278,7 @@ func (o *onboarding) setCountries(countries []radiobrowser.Country, err error) {
 		}
 		return
 	}
-	o.countries = make([]Country, 0, len(countries))
-	for _, source := range countries {
-		country := countryFromRadioBrowser(source)
-		if country.Name != "" {
-			o.countries = append(o.countries, country)
-		}
-	}
+	o.countries = countriesFromRadioBrowser(countries)
 	if o.fromSettings {
 		o.countries = append(o.countries, Country{Name: "Any country"})
 	}
@@ -594,23 +589,28 @@ func suggestedFlag(code string) fyne.CanvasObject {
 	return flag
 }
 
-// systemLocaleCountryCode reads a two-letter region from common locale variables.
+// systemLocaleCountryCode prefers locale environment variables and falls back to Fyne's system locale.
 func systemLocaleCountryCode() string {
 	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
-		locale := strings.TrimSpace(os.Getenv(key))
-		if locale == "" {
-			continue
-		}
-		locale, _, _ = strings.Cut(locale, ".")
-		locale, _, _ = strings.Cut(locale, "@")
-		parts := strings.FieldsFunc(locale, func(r rune) bool { return r == '_' || r == '-' })
-		if len(parts) < 2 || len(parts[1]) != 2 {
-			continue
-		}
-		code := strings.ToUpper(parts[1])
-		if code[0] >= 'A' && code[0] <= 'Z' && code[1] >= 'A' && code[1] <= 'Z' {
+		if code := countryCodeFromLocale(os.Getenv(key)); code != "" {
 			return code
 		}
 	}
-	return ""
+	return countryCodeFromLocale(lang.SystemLocale().String())
+}
+
+// countryCodeFromLocale extracts a two-letter region from a locale identifier.
+func countryCodeFromLocale(locale string) string {
+	locale = strings.TrimSpace(locale)
+	locale, _, _ = strings.Cut(locale, ".")
+	locale, _, _ = strings.Cut(locale, "@")
+	parts := strings.FieldsFunc(locale, func(r rune) bool { return r == '_' || r == '-' })
+	if len(parts) < 2 || len(parts[1]) != 2 {
+		return ""
+	}
+	code := strings.ToUpper(parts[1])
+	if code[0] < 'A' || code[0] > 'Z' || code[1] < 'A' || code[1] > 'Z' {
+		return ""
+	}
+	return code
 }
