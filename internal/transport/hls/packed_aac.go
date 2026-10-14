@@ -17,8 +17,8 @@ const (
 	maxPackedPlaylistDepth = 3
 )
 
-// errNotPackedAAC lets Open distinguish packed AAC from MPEG-TS decode failures.
-var errNotPackedAAC = errors.New("HLS segment is not packed AAC/ADTS")
+// errNotPackedAAC identifies a segment with no readable AAC/ADTS audio.
+var errNotPackedAAC = errors.New("HLS segment contains no readable AAC/ADTS audio")
 
 // selectAACVariant prefers the highest-bandwidth variant that advertises AAC.
 func selectAACVariant(variants []*playlist.MultivariantVariant) *playlist.MultivariantVariant {

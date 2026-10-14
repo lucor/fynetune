@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	fyne.io/fyne/v2 v2.8.1
+	github.com/asticode/go-astits v1.16.0
 	github.com/bluenviron/gohlslib/v2 v2.4.5
 	github.com/bluenviron/mediacommon/v2 v2.9.5
 	github.com/colespringer/waxflow v0.0.0-20260923050513-446ca3124d89
@@ -23,7 +24,6 @@ require (
 	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/asticode/go-astikit v0.30.0 // indirect
-	github.com/asticode/go-astits v1.16.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect

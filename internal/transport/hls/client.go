@@ -10,13 +10,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/bluenviron/gohlslib/v2"
 	"github.com/bluenviron/gohlslib/v2/pkg/codecs"
 	"github.com/bluenviron/gohlslib/v2/pkg/playlist"
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
 	"go.lucor.dev/fynetune/internal/codec"
-	wavcodec "go.lucor.dev/fynetune/internal/codec/aac"
+	"go.lucor.dev/fynetune/internal/codec/aac"
 )
 
 var (
@@ -27,6 +29,8 @@ var (
 	// ErrInvalidAccessUnit indicates that an AAC access unit cannot fit in an ADTS frame.
 	ErrInvalidAccessUnit = errors.New("HLS AAC access unit cannot be represented as ADTS")
 )
+
+const hlsStartupTimeout = 10 * time.Second
 
 // adtsSampleRates lists the sample rates in the order used by the ADTS index table.
 var adtsSampleRates = [...]int{96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350}
@@ -44,7 +48,7 @@ func New(client *http.Client) *Client {
 // Open starts a client for one HLS playlist, selects a supported AAC track,
 // adds an ADTS header to each access unit, and returns the result as an
 // io.ReadCloser. Closing the reader stops the HLS session. If gohlslib cannot
-// read a packed AAC playlist, Open retries it through the local packed-AAC reader.
+// initialize packed AAC or fragmented MPEG-TS AAC, Open uses the local segment reader.
 func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.StreamInfo, error) {
 	reader, writer := io.Pipe()
 	hlsClient := &gohlslib.Client{URI: uri, HTTPClient: c.httpClient}
@@ -77,6 +81,8 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 	}
 	clientDone := make(chan error, 1)
 	go func() { clientDone <- hlsClient.Wait2() }()
+	startupTimer := time.NewTimer(hlsStartupTimeout)
+	defer startupTimer.Stop()
 
 	select {
 	case err := <-stream.ready:
@@ -92,18 +98,16 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 		if ctx.Err() != nil {
 			return nil, codec.StreamInfo{}, ctx.Err()
 		}
-		// gohlslib treats every non-fMP4 media segment as MPEG-TS. Some radio
-		// CDNs instead publish packed AAC/ADTS segments, which its TS demuxer
-		// rejects with EOF before exposing an AAC track. Retry those through the
-		// small ADTS-only reader; ordinary HLS stays entirely in gohlslib.
-		if errors.Is(err, io.EOF) {
-			if stream, info, fallbackErr := c.openPackedAAC(ctx, uri); fallbackErr == nil {
-				return stream, info, nil
-			} else {
-				return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w (packed AAC fallback: %w)", err, fallbackErr)
-			}
+		return c.openAfterHLSFailure(ctx, uri, err)
+	case <-startupTimer.C:
+		_ = reader.Close()
+		_ = writer.CloseWithError(context.DeadlineExceeded)
+		hlsClient.Close()
+		err := fmt.Errorf("HLS stream produced no AAC data within %s", hlsStartupTimeout)
+		if ctx.Err() != nil {
+			return nil, codec.StreamInfo{}, ctx.Err()
 		}
-		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w", err)
+		return c.openAfterHLSFailure(ctx, uri, err)
 	case <-ctx.Done():
 		_ = reader.Close()
 		_ = writer.CloseWithError(ctx.Err())
@@ -115,32 +119,67 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 	return stream, codec.StreamInfo{URL: uri, Codec: "AAC", MIMEType: "application/vnd.apple.mpegurl"}, nil
 }
 
-// openPackedAAC reads packed AAC segments when gohlslib cannot demux them.
-func (c *Client) openPackedAAC(ctx context.Context, uri string) (io.ReadCloser, codec.StreamInfo, error) {
+// openAfterHLSFailure retries startup failures that can be caused by AAC data
+// split across PES packets or timestamps that prevent the first AAC unit from
+// reaching the caller.
+func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error) (io.ReadCloser, codec.StreamInfo, error) {
+	if !shouldRetryAACSegments(err) {
+		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w", err)
+	}
+	stream, info, fallbackErr := c.openAACSegments(ctx, uri)
+	if fallbackErr != nil {
+		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w (AAC segment fallback: %w)", err, fallbackErr)
+	}
+	return stream, info, nil
+}
+
+// shouldRetryAACSegments recognizes upstream MPEG-TS startup failures for
+// which the local reader can reconstruct AAC frames and bypass HLS timestamps.
+func shouldRetryAACSegments(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return errors.Is(err, io.EOF) ||
+		(strings.Contains(message, "unable to decode ADTS:") && strings.Contains(message, "invalid frame length")) ||
+		strings.Contains(message, "difference between DTS and system time is too big") ||
+		strings.Contains(message, "HLS stream produced no AAC data")
+}
+
+// openAACSegments reads AAC from packed ADTS or MPEG-TS segments when the
+// standard demuxer cannot initialize. AAC bytes remain continuous across PES
+// and segment boundaries so the codec framer can reconstruct split frames.
+func (c *Client) openAACSegments(ctx context.Context, uri string) (io.ReadCloser, codec.StreamInfo, error) {
 	mediaURL, mediaPlaylist, err := c.resolvePackedMediaPlaylist(ctx, uri)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
 	}
 	if mediaPlaylist.Map != nil {
-		return nil, codec.StreamInfo{}, fmt.Errorf("packed AAC fallback does not support EXT-X-MAP")
+		return nil, codec.StreamInfo{}, fmt.Errorf("AAC segment fallback does not support EXT-X-MAP")
 	}
 	first, firstIndex := newestPackedSegment(mediaPlaylist)
 	if first == nil {
-		return nil, codec.StreamInfo{}, fmt.Errorf("packed AAC playlist has no media segments")
+		return nil, codec.StreamInfo{}, fmt.Errorf("AAC playlist has no media segments")
 	}
 	if first.Key != nil && first.Key.Method != playlist.MediaKeyMethodNone {
-		return nil, codec.StreamInfo{}, fmt.Errorf("packed AAC fallback does not support encrypted segments")
+		return nil, codec.StreamInfo{}, fmt.Errorf("AAC segment fallback does not support encrypted segments")
 	}
 	segmentURL, err := mediaURL.Parse(first.URI)
 	if err != nil {
-		return nil, codec.StreamInfo{}, fmt.Errorf("resolve packed AAC segment URL: %w", err)
+		return nil, codec.StreamInfo{}, fmt.Errorf("resolve AAC segment URL: %w", err)
 	}
 	firstData, err := c.downloadPackedSegment(ctx, segmentURL.String(), first.ByteRangeStart, first.ByteRangeLength)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
 	}
-	if _, err := wavcodec.NewFramer(bytes.NewReader(firstData)).ReadFrame(); err != nil {
-		return nil, codec.StreamInfo{}, fmt.Errorf("%w: %v", errNotPackedAAC, err)
+	firstData, err = extractSegmentAAC(ctx, firstData)
+	if err != nil {
+		return nil, codec.StreamInfo{}, err
+	}
+	// A declared AAC track is not sufficient: reject an initial segment with
+	// no complete ADTS frame before returning a live reader to the decoder.
+	if _, err := aac.NewFramer(bytes.NewReader(firstData)).ReadFrame(); err != nil {
+		return nil, codec.StreamInfo{}, fmt.Errorf("%w: initial AAC data: %w", errNotPackedAAC, err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -150,7 +189,7 @@ func (c *Client) openPackedAAC(ctx context.Context, uri string) (io.ReadCloser, 
 	go func() {
 		defer close(stream.done)
 		defer cancel()
-		c.runPackedAAC(ctx, writer, mediaURL, mediaPlaylist, firstData, nextSequence)
+		c.runAACSegments(ctx, writer, mediaURL, mediaPlaylist, firstData, nextSequence)
 	}()
 	return stream, codec.StreamInfo{URL: uri, Codec: "AAC", MIMEType: "application/vnd.apple.mpegurl"}, nil
 }
@@ -258,8 +297,8 @@ func (c *Client) downloadPackedSegment(ctx context.Context, rawURL string, start
 	return body, nil
 }
 
-// runPackedAAC writes the initial segment and follows a live media playlist.
-func (c *Client) runPackedAAC(
+// runAACSegments writes the initial segment and follows a live media playlist.
+func (c *Client) runAACSegments(
 	ctx context.Context,
 	writer *io.PipeWriter,
 	mediaURL *url.URL,
@@ -288,7 +327,7 @@ func (c *Client) runPackedAAC(
 				continue
 			}
 			if segment.Key != nil && segment.Key.Method != playlist.MediaKeyMethodNone {
-				_ = writer.CloseWithError(fmt.Errorf("packed AAC fallback does not support encrypted segments"))
+				_ = writer.CloseWithError(fmt.Errorf("AAC segment fallback does not support encrypted segments"))
 				return
 			}
 			segmentURL, err := mediaURL.Parse(segment.URI)
@@ -298,11 +337,12 @@ func (c *Client) runPackedAAC(
 			}
 			data, err := c.downloadPackedSegment(ctx, segmentURL.String(), segment.ByteRangeStart, segment.ByteRangeLength)
 			if err != nil {
-				slog.Warn("could not download packed AAC HLS segment", "url", segmentURL.String(), "error", err)
+				slog.Warn("could not download AAC HLS segment", "url", segmentURL.String(), "error", err)
 				continue
 			}
-			if _, err := wavcodec.NewFramer(bytes.NewReader(data)).ReadFrame(); err != nil {
-				_ = writer.CloseWithError(fmt.Errorf("%w: %v", errNotPackedAAC, err))
+			data, err = extractSegmentAAC(ctx, data)
+			if err != nil {
+				_ = writer.CloseWithError(err)
 				return
 			}
 			if err := write(data); err != nil {
@@ -322,17 +362,17 @@ func (c *Client) runPackedAAC(
 		}
 		body, finalURL, err := c.downloadPackedPlaylist(ctx, mediaURL.String())
 		if err != nil {
-			slog.Warn("could not reload packed AAC HLS playlist", "url", mediaURL.String(), "error", err)
+			slog.Warn("could not reload AAC HLS playlist", "url", mediaURL.String(), "error", err)
 			continue
 		}
 		parsed, err := playlist.Unmarshal(body)
 		if err != nil {
-			slog.Warn("could not parse packed AAC HLS playlist", "url", finalURL.String(), "error", err)
+			slog.Warn("could not parse AAC HLS playlist", "url", finalURL.String(), "error", err)
 			continue
 		}
 		updated, ok := parsed.(*playlist.Media)
 		if !ok {
-			_ = writer.CloseWithError(fmt.Errorf("packed AAC media playlist changed type to %T", parsed))
+			_ = writer.CloseWithError(fmt.Errorf("AAC media playlist changed type to %T", parsed))
 			return
 		}
 		mediaURL, current = finalURL, updated

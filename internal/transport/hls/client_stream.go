@@ -2,6 +2,7 @@ package hls
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -54,7 +55,6 @@ func (s *clientStream) onTracks(tracks []*gohlslib.Track) error {
 	s.client.OnDataMPEG4Audio(selected, func(_ int64, accessUnits [][]byte) {
 		s.writeAccessUnits(audioCodec, accessUnits)
 	})
-	s.signalReady(nil)
 	return nil
 }
 
@@ -76,6 +76,9 @@ func (s *clientStream) writeAccessUnits(audioCodec *codecs.MPEG4Audio, accessUni
 			err = retry.NoRetry(err)
 		}
 		if err == nil {
+			// Signal readiness before writing to the pipe: Open can return and
+			// the decoder can begin reading without deadlocking this callback.
+			s.signalReady(nil)
 			_, err = s.writer.Write(header[:])
 		}
 		if err == nil {
@@ -83,6 +86,7 @@ func (s *clientStream) writeAccessUnits(audioCodec *codecs.MPEG4Audio, accessUni
 		}
 		if err != nil {
 			s.writeErr = err
+			s.signalReady(err)
 			_ = s.writer.CloseWithError(err)
 			return
 		}
@@ -119,6 +123,11 @@ func (s *clientStream) monitor(ctx context.Context, clientDone <-chan error) {
 		if err == nil {
 			_ = s.writer.Close()
 		} else {
+			if shouldRetryAACSegments(err) {
+				// A demuxer interruption is a stream failure, even during the
+				// decoder's initial probe. Preserve it as a retryable read error.
+				err = fmt.Errorf("HLS stream interrupted: %w: %w", io.ErrUnexpectedEOF, err)
+			}
 			_ = s.writer.CloseWithError(err)
 		}
 	}
