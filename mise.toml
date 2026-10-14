@@ -58,7 +58,7 @@ run = "mkdir -p dist && go tool fyne build --source-dir . --output dist/fynetune
 
 [tasks.package]
 description = "Create a development package for the current desktop operating system"
-run = "mkdir -p dist && cd dist && go tool fyne package --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png"
+run = "mkdir -p dist && cd dist && go tool fyne package --source-dir .. --name FyneTune --app-id dev.lucor.fynetune --icon Icon.png"
 
 [tasks.generate-icons]
 description = "Download Lucide SVGs and regenerate optimized FyneTune PNG icon assets"
@@ -90,6 +90,6 @@ export ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
 export ANDROID_NDK_HOME="$sdk_root/ndk/${ANDROID_NDK_VERSION}"
 mkdir -p dist
 go tool fyne package --os android --name FyneTune \\
-  --app-id dev.lucor.fynetune --icon internal/ui/assets/icon.png
+  --app-id dev.lucor.fynetune --icon Icon.png
 mv FyneTune.apk dist/FyneTune.apk
 """
