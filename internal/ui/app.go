@@ -11,9 +11,6 @@ import (
 	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
 
-//go:embed assets/logo.png
-var logoPNG []byte
-
 //go:embed assets/icon.svg
 var iconSVG []byte
 
@@ -113,9 +110,4 @@ func newApp(w *Window) fyne.CanvasObject {
 		container.NewPadded(nav),
 	)
 	return container.NewBorder(container.NewVBox(header, widget.NewSeparator()), footer, nil, nil, content)
-}
-
-// placeholder marks a section's content until its screen is designed.
-func placeholder(name string) fyne.CanvasObject {
-	return container.NewCenter(widget.NewLabel(name))
 }

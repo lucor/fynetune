@@ -196,7 +196,7 @@ func TestCountryPickerCanBeOpenedAgainAfterBack(t *testing.T) {
 
 func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	app := test.NewTempApp(t)
-	app.Settings().SetTheme(brandTheme{Theme: theme.LightTheme()})
+	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
 	w := &Window{app: app, window: window, store: storage.New(app)}
@@ -288,7 +288,7 @@ func TestOnboardingFailedSetup(t *testing.T) {
 func newOnboardingTestWindow(t *testing.T) (fyne.Window, *onboarding) {
 	t.Helper()
 	app := test.NewTempApp(t)
-	app.Settings().SetTheme(brandTheme{Theme: theme.LightTheme()})
+	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
 	w := &Window{window: window}

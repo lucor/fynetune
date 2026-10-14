@@ -284,13 +284,6 @@ func (w *Window) Close() error {
 	return w.closeErr
 }
 
-// showOnboarding replaces the app view with a fresh country setup flow.
-func (w *Window) showOnboarding() {
-	w.onboarding = newOnboarding(w)
-	w.setContent(w.onboarding.welcomeScreen())
-	w.onboarding.loadCountries()
-}
-
 // showApp returns to the app view after onboarding completes.
 func (w *Window) showApp() {
 	w.onboarding = nil

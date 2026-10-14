@@ -156,7 +156,7 @@ func (s *stationList) downloadStationIcon(ctx context.Context, station radio.Sta
 			return result, nil
 		}
 		slog.Debug("station icon source failed", "station", station.Name, "source", "Radio Browser favicon", "url", directURL, "error", err)
-		lastErr = fmt.Errorf("Radio Browser favicon %q: %w", directURL, err)
+		lastErr = fmt.Errorf("radio browser favicon %q: %w", directURL, err)
 	} else if directURL == "" {
 		slog.Debug("station icon source skipped", "station", station.Name, "source", "Radio Browser favicon", "reason", "favicon URL is missing")
 	} else {
