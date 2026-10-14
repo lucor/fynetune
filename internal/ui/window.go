@@ -23,6 +23,11 @@ import (
 	"go.lucor.dev/fynetune/internal/ui/widgets"
 )
 
+const (
+	initialWindowWidth  = 360
+	initialWindowHeight = 560
+)
+
 // Window owns the application dependencies and switches between its two views.
 type Window struct {
 	app                  fyne.App
@@ -133,7 +138,7 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		window.SetCloseIntercept(func() { window.Hide() })
 	}
 
-	window.Resize(fyne.NewSize(480, 800))
+	window.Resize(fyne.NewSize(initialWindowWidth, initialWindowHeight))
 	if settings.DiscoveryCountry == "" {
 		w.onboarding = newOnboarding(w)
 		w.setContent(w.onboarding.welcomeScreen())

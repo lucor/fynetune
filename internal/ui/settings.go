@@ -22,16 +22,16 @@ func (w *Window) settingsPage() fyne.CanvasObject {
 	})
 	appearance.SetSelected(appearanceLabel(w.settings.Appearance))
 	appearanceRow := w.settingsRow(w.newThemeIcon(icons.Appearance),
-		settingsText("Theme", "Choose the application theme"), appearance)
+		settingsText("Theme"), appearance)
 
 	auto := w.settingsCheckRow(w.newThemeIcon(icons.Play), "Play last station on startup",
-		"Automatically resume the last played station", w.settings.AutoPlay, func(value bool) {
+		w.settings.AutoPlay, func(value bool) {
 			w.settings.AutoPlay = value
 			w.saveSettings()
 		})
 
 	reconnect := w.settingsCheckRow(w.newThemeIcon(icons.Reconnect), "Reconnect automatically",
-		"Try to reconnect when the stream is interrupted", w.settings.Reconnect, func(value bool) {
+		w.settings.Reconnect, func(value bool) {
 			w.settings.Reconnect = value
 			w.radioPlayer.SetReconnect(value)
 			w.saveSettings()
@@ -40,7 +40,7 @@ func (w *Window) settingsPage() fyne.CanvasObject {
 	startup := []fyne.CanvasObject{auto}
 	if !w.app.Driver().Device().IsMobile() {
 		minimized := w.settingsCheckRow(w.newThemeIcon(icons.PictureInPicture), "Start minimized",
-			"Launch FyneTune in the background", w.settings.StartMinimized, func(value bool) {
+			w.settings.StartMinimized, func(value bool) {
 				w.settings.StartMinimized = value
 				w.saveSettings()
 			})
@@ -67,15 +67,16 @@ func (w *Window) settingsPage() fyne.CanvasObject {
 	country := discoveryCountry(w.settings.DiscoveryCountry)
 	countryFlag := canvas.NewText(countryOptionFlag(country.Code), theme.Color(theme.ColorNameForeground))
 	countryFlag.TextSize = theme.Size(theme.SizeNameHeadingText)
-	countryText := settingsText(country.Name, "Current country for Radio tab")
-	countryName := countryText.Objects[0].(*widget.Label)
+	countryName := settingsText(country.Name)
 	changeCountry := widget.NewButton("Change", w.changeCountry)
 	if w.directory == nil {
 		changeCountry.Disable()
 	}
 	w.settingsCountryFlag = countryFlag
 	w.settingsCountryName = countryName
-	countryRow := w.settingsRow(countryFlag, countryText, changeCountry)
+	// Asymmetric padding lowers the emoji by two logical units for optical alignment.
+	countryIcon := container.New(layout.NewCustomPaddedLayout(4, 0, 0, 0), container.NewCenter(countryFlag))
+	countryRow := w.settingsRow(countryIcon, countryName, changeCountry)
 
 	settingsContent := []fyne.CanvasObject{
 		w.settingsHeading("Radio", widget.NewIcon(theme.NewThemedResource(homeBrandIcon))),
@@ -123,10 +124,10 @@ func appearanceValue(label string) string {
 }
 
 // settingsCheckRow places a standard check beside an icon and explanatory text.
-func (w *Window) settingsCheckRow(icon fyne.CanvasObject, title, description string, checked bool, onChanged func(bool)) fyne.CanvasObject {
+func (w *Window) settingsCheckRow(icon fyne.CanvasObject, title string, checked bool, onChanged func(bool)) fyne.CanvasObject {
 	check := widget.NewCheck("", onChanged)
 	check.SetChecked(checked)
-	return w.settingsRow(icon, settingsText(title, description),
+	return w.settingsRow(icon, settingsText(title),
 		container.NewGridWrap(fyne.NewSize(48, 48), container.NewCenter(check)))
 }
 
@@ -139,15 +140,12 @@ func (w *Window) settingsHeading(title string, icon fyne.CanvasObject) fyne.Canv
 		compactTextTheme{Theme: w.app.Settings().Theme()})
 }
 
-// settingsText stacks a setting's title and smaller supporting text.
-func settingsText(title, description string) *fyne.Container {
+// settingsText creates a setting label.
+func settingsText(title string) *widget.Label {
 	label := widget.NewLabel(title)
+	label.Alignment = fyne.TextAlignLeading
 	label.Wrapping = fyne.TextWrapWord
-	detail := widget.NewLabel(description)
-	detail.Wrapping = fyne.TextWrapWord
-	detail.Importance = widget.LowImportance
-	detail.SizeName = stationMetadataSizeName
-	return container.NewVBox(label, detail)
+	return label
 }
 
 // settingsRow keeps icons and controls vertically centered beside the text.
@@ -155,7 +153,8 @@ func (w *Window) settingsRow(icon, text, control fyne.CanvasObject) fyne.CanvasO
 	return w.settingsCard(container.NewBorder(nil, nil,
 		container.NewCenter(container.NewPadded(container.NewGridWrap(fyne.NewSize(18, 18), icon))),
 		container.NewCenter(control),
-		container.NewThemeOverride(text, compactTextTheme{Theme: w.app.Settings().Theme()})))
+		container.NewThemeOverride(container.NewVBox(layout.NewSpacer(), text, layout.NewSpacer()),
+			compactTextTheme{Theme: w.app.Settings().Theme()})))
 }
 
 // settingsCard uses Fyne's card renderer for rounded, theme-aware settings panels.

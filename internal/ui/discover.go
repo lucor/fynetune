@@ -58,7 +58,6 @@ type discoverSection struct {
 	countryValue Country
 	countryPrior Country
 	genre        *widget.Select
-	codec        *widget.Select
 	status       *widget.Label
 	count        *widget.Label
 	subtitle     *widget.Label
@@ -168,10 +167,7 @@ func newDiscoverSection(w *Window) *discoverSection {
 	s.genre = widget.NewSelect(discoverGenreLabels(), nil)
 	s.genre.SetSelected("Any genre")
 	s.genre.OnChanged = func(string) { s.scheduleQuery() }
-	s.codec = widget.NewSelect([]string{"Any codec", "MP3", "AAC", "AAC+", "OGG", "Opus"}, nil)
-	s.codec.SetSelected("Any codec")
-	s.codec.OnChanged = func(string) { s.scheduleQuery() }
-	filters := container.NewGridWithColumns(3, s.country, s.genre, s.codec)
+	filters := container.NewGridWithColumns(2, s.country, s.genre)
 	s.count.Importance = widget.LowImportance
 	s.status.Importance = widget.LowImportance
 	s.status.Wrapping = fyne.TextWrapWord
@@ -264,9 +260,6 @@ func (s *discoverSection) scheduleQuery() {
 		query.CountryCode = s.countryValue.Code
 	}
 	query.Tags = discoverGenreTags(s.genre.Selected)
-	if s.codec.Selected != "" && s.codec.Selected != "Any codec" {
-		query.Codec = s.codec.Selected
-	}
 	s.count.Hide()
 	if isUnfilteredDiscoverQuery(query) {
 		s.status.SetText("Loading popular stations…")
