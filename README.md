@@ -4,7 +4,7 @@
   <img src="internal/ui/assets/logo.png" alt="FyneTune internet radio player" width="420">
 </p>
 
-FyneTune is a lightweight internet radio player for Windows, macOS, Linux, and Android. Discover stations, save favorites, and listen while the app runs in the background.
+FyneTune is a lightweight internet radio player for Windows, macOS, Linux, FreeBSD, and Android. Discover stations, save favorites, and listen while the app runs in the background.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="FyneTune playing an internet radio station" width="360">
@@ -20,14 +20,44 @@ FyneTune is a lightweight internet radio player for Windows, macOS, Linux, and A
 - Keep listening from the system tray on supported desktops.
 - Save stations and preferences between launches.
 
+## Installation
+
+Download the latest packages from the [Releases page](https://github.com/lucor/fynetune/releases/latest). Packages are available for Linux (amd64 and arm64), macOS (Intel and Apple Silicon), Windows (amd64), FreeBSD (amd64 and arm64), and Android.
+
+### Linux
+
+Download the `.tar.xz` package for your architecture and extract it. From the extracted directory containing the `Makefile`, run `make user-install` to install FyneTune for your user, or `sudo make install` to install it system-wide.
+
+### macOS
+
+Download the `.dmg` package for your Mac: `darwin_amd64` for Intel or `darwin_arm64` for Apple Silicon. Open the disk image and drag FyneTune to Applications. Because FyneTune is not notarized, remove the quarantine attribute after copying it:
+
+```sh
+xattr -r -d com.apple.quarantine /Applications/FyneTune.app
+```
+
+Run this command again after upgrading FyneTune.
+
+### Windows
+
+Download and run the `windows_amd64.exe` package.
+
+### FreeBSD
+
+Download and extract the `.tar.xz` package for your architecture. Install GNU Make (`gmake`) if needed, then from the extracted directory containing the `Makefile`, run `gmake user-install` to install FyneTune for your user, or `sudo gmake install` to install it system-wide.
+
+### Android
+
+Download the `.apk` package to your Android device and open it to start installation. Because the APK is distributed outside Google Play, Android requires explicit permission for the browser or file manager opening it to [install unknown apps](https://developer.android.com/distribute/marketing-tools/alternative-distribution). This protects against unwanted installations from other sources. Follow the installation prompt to enable **Allow from this source** for that app, then return to the APK and complete installation. You can disable this permission afterward; FyneTune will continue to work.
+
 ## Development
 
 FyneTune is written in Go and uses [Fyne](https://fyne.io/) for its desktop and Android interfaces. [mise](https://mise.jdx.dev/) manages the Go toolchain and project tasks. Install the platform prerequisites below, then set up dependencies and run the app:
 
 ```sh
 mise install
-mise run setup
-mise run run
+mise setup
+mise start
 ```
 
 Project tasks are available through mise:

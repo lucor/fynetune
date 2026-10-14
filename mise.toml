@@ -15,12 +15,12 @@ ANDROID_NDK_VERSION = "30.0.16248370"
 description = "Download Go module dependencies"
 run = "go mod download"
 
-[tasks.run]
-description = "Run FyneTune from source"
+[tasks.start]
+description = "Start FyneTune from source"
 run = "go run ."
 
-[tasks.run-debug]
-description = "Run FyneTune from source with debug logs enabled"
+[tasks.start-debug]
+description = "Start FyneTune from source with debug logs enabled"
 run = "go run ."
 env = { FYNETUNE_DEBUG = "1" }
 
