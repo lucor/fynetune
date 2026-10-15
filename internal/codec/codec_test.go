@@ -1,6 +1,10 @@
 package codec
 
-import "testing"
+import (
+	"bytes"
+	"io"
+	"testing"
+)
 
 // TestNameFromMIMEType checks known types, MP3 fallbacks, and unknown type handling.
 func TestNameFromMIMEType(t *testing.T) {
@@ -44,6 +48,42 @@ func TestIsADTSHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := isADTSHeader(tc.prefix); got != tc.want {
 				t.Fatalf("isADTSHeader(% x) = %t, want %t", tc.prefix, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIdentifyCodec(t *testing.T) {
+	oggOpus := make([]byte, 36)
+	copy(oggOpus, "OggS")
+	oggOpus[26] = 1
+	oggOpus[27] = 8
+	copy(oggOpus[28:], "OpusHead")
+
+	for _, tc := range []struct {
+		name     string
+		stream   []byte
+		detected CodecName
+	}{
+		{name: "AAC", stream: []byte{0xff, 0xf1, 0, 0}, detected: NameAAC},
+		{name: "Opus in Ogg", stream: oggOpus, detected: NameOPUS},
+		{name: "MP3", stream: []byte{0xff, 0xfb, 1}, detected: NameMP3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := StreamInfo{Codec: NameMP3}
+			reader, err := identifyCodec(bytes.NewReader(tc.stream), &info)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Codec != tc.detected {
+				t.Fatalf("identified codec = %q, want %q", info.Codec, tc.detected)
+			}
+			remaining, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(remaining, tc.stream) {
+				t.Fatal("codec probe consumed stream bytes")
 			}
 		})
 	}

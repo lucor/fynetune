@@ -3,6 +3,7 @@ package codec
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"go.lucor.dev/fynetune/internal/codec/aac"
 	"go.lucor.dev/fynetune/internal/codec/mp3"
+	"go.lucor.dev/fynetune/internal/codec/opus"
 	"go.lucor.dev/fynetune/internal/retry"
 )
 
@@ -68,6 +70,9 @@ func New() *Registry {
 	})
 	registry.Register(NameAAC, func(reader io.Reader) (Decoder, error) {
 		return aac.NewDecoder(reader)
+	})
+	registry.Register(NameOPUS, func(reader io.Reader) (Decoder, error) {
+		return opus.NewDecoder(reader)
 	})
 	return registry
 }
@@ -138,23 +143,17 @@ func (r *Registry) Decode(reader io.Reader, info *StreamInfo) (Decoder, error) {
 	if r == nil {
 		return nil, ErrNilRegistry
 	}
-	if info.MIMEType != "" && info.Codec == NameMP3 {
-		buffered := bufio.NewReader(reader)
-		prefix, _ := buffered.Peek(2)
-		// Some radio servers label AAC streams as audio/mpeg.
-		if isADTSHeader(prefix) {
-			info.Codec = NameAAC
-		}
-		reader = buffered
+	reader, err := identifyCodec(reader, info)
+	if err != nil {
+		return nil, err
 	}
-	name := normalize(info.Codec)
-	newDecoder, ok := r.decoders[name]
+	newDecoder, ok := r.decoders[info.Codec]
 	if !ok {
 		return nil, retry.NoRetry(fmt.Errorf("%w %q", ErrUnsupportedCodec, info.Codec))
 	}
 	decoder, err := newDecoder(reader)
 	if err != nil {
-		err = fmt.Errorf("initialize %s decoder: %w", name, err)
+		err = fmt.Errorf("initialize %s decoder: %w", info.Codec, err)
 		var networkErr net.Error
 		if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.As(err, &networkErr) {
 			err = retry.NoRetry(err)
@@ -162,6 +161,63 @@ func (r *Registry) Decode(reader io.Reader, info *StreamInfo) (Decoder, error) {
 		return nil, err
 	}
 	return decoder, nil
+}
+
+type codecIdentifier func(*bufio.Reader) (CodecName, error)
+
+var codecIdentifiers = []codecIdentifier{
+	identifyADTS,
+	identifyOgg,
+}
+
+// identifyCodec buffers the stream and updates info on the first matching probe.
+// If no probe matches, the reported codec is preserved.
+func identifyCodec(reader io.Reader, info *StreamInfo) (io.Reader, error) {
+	buffered := bufio.NewReader(reader)
+	for _, identify := range codecIdentifiers {
+		name, err := identify(buffered)
+		if err != nil {
+			return nil, err
+		}
+		if name != "" {
+			info.Codec = name
+			break
+		}
+	}
+	return buffered, nil
+}
+
+// identifyADTS recognizes AAC streams mislabeled by a radio server.
+func identifyADTS(reader *bufio.Reader) (CodecName, error) {
+	prefix, _ := reader.Peek(2)
+	if isADTSHeader(prefix) {
+		return NameAAC, nil
+	}
+	return "", nil
+}
+
+// identifyOgg inspects the first page's codec signature without consuming it.
+func identifyOgg(reader *bufio.Reader) (CodecName, error) {
+	signature, err := reader.Peek(4)
+	if err != nil || !bytes.Equal(signature, []byte("OggS")) {
+		return "", nil
+	}
+	header, err := reader.Peek(27)
+	if err != nil {
+		return "", fmt.Errorf("identify Ogg codec: %w", err)
+	}
+	if header[26] == 0 {
+		return NameOGG, nil
+	}
+	offset := 27 + int(header[26])
+	prefix, err := reader.Peek(offset + 8)
+	if err != nil {
+		return "", fmt.Errorf("identify Ogg codec: %w", err)
+	}
+	if bytes.Equal(prefix[offset:], []byte("OpusHead")) {
+		return NameOPUS, nil
+	}
+	return NameOGG, nil
 }
 
 // normalize trims surrounding whitespace and uppercases a codec name.

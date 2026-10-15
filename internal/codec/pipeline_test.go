@@ -1,6 +1,7 @@
 package codec_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"math"
@@ -12,6 +13,9 @@ import (
 	waxcodec "github.com/colespringer/waxflow/codec"
 	waxaac "github.com/colespringer/waxflow/codec/aac"
 	waxmp3 "github.com/colespringer/waxflow/codec/mp3"
+	waxopus "github.com/colespringer/waxflow/codec/opus"
+	waxcontainer "github.com/colespringer/waxflow/container"
+	waxogg "github.com/colespringer/waxflow/container/ogg"
 	appaudio "go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
@@ -28,6 +32,9 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 		{name: "MP3", mime: "audio/mpeg", fixture: mp3RadioFixture, rate: 44100, codec: codec.NameMP3},
 		{name: "AAC-LC", mime: "audio/aacp", fixture: aacRadioFixture, rate: 48000, codec: codec.NameAAC},
 		{name: "AAC-LC reported as MP3", mime: "audio/mpeg", fixture: aacRadioFixture, rate: 48000, codec: codec.NameAAC},
+		{name: "Opus in Ogg", mime: "audio/ogg", fixture: opusRadioFixture, rate: 48000, codec: codec.NameOPUS},
+		{name: "Opus MIME type", mime: "audio/opus", fixture: opusRadioFixture, rate: 48000, codec: codec.NameOPUS},
+		{name: "Ogg MIME parameters", mime: "application/ogg; codecs=opus", fixture: opusRadioFixture, rate: 48000, codec: codec.NameOPUS},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compressed := tc.fixture(t)
@@ -80,6 +87,35 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 			}
 		})
 	}
+}
+
+// opusRadioFixture encodes a tone and muxes it into sequential Ogg pages.
+func opusRadioFixture(t *testing.T) []byte {
+	t.Helper()
+	format := waxAudioFormat(48000, 2)
+	encoder, err := waxopus.NewEncoder(format, &waxopus.EncoderOptions{Bitrate: 192000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	muxer := waxogg.NewMuxer(&out, nil)
+	if err := muxer.Begin([]waxcontainer.Track{{Codec: waxcodec.Opus, CodecConfig: encoder.CodecConfig(), Fmt: format}}); err != nil {
+		t.Fatal(err)
+	}
+	emit := func(packet waxcodec.Packet) error { return muxer.WritePacket(waxcontainer.Packet{Packet: packet}) }
+	input := sineInput(format, 8192)
+	defer waxaudio.Put(input)
+	if err := encoder.Encode(input, emit); err != nil {
+		t.Fatal(err)
+	}
+	trailer, err := encoder.Finish(emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := muxer.End(trailer); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
 }
 
 // captureOutput records the PCM format and first bytes produced by a decoder.
