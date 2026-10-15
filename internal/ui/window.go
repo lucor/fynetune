@@ -288,13 +288,13 @@ func (w *Window) Close() error {
 // showApp returns to the app view after onboarding completes.
 func (w *Window) showApp() {
 	w.onboarding = nil
+	if w.home != nil {
+		w.home.subtitle.SetText(homeSubtitle(w.settings.DiscoveryCountry))
+		if w.initialStations != nil {
+			w.home.setStations(w.initialStations)
+		}
+	}
 	w.setContent(w.appContent)
-	if w.home == nil {
-		return
-	}
-	if w.initialStations != nil {
-		w.home.setStations(w.initialStations)
-	}
 }
 
 // setContent installs the active top-level view in the window.

@@ -28,6 +28,7 @@ func newHomeSection(w *Window) *homeSection {
 		rows:     newStationList(w, false),
 	}
 	h.subtitle.SizeName = theme.SizeNameText
+	h.subtitle.Importance = widget.LowImportance
 	h.Container = container.NewBorder(h.status, nil, nil, nil, h.rows.list)
 	return h
 }

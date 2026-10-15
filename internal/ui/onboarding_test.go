@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -38,6 +39,28 @@ func TestOnboardingCanvasColorsFollowThemeChanges(t *testing.T) {
 	}
 	if got, want := color.NRGBAModel.Convert(o.themeRects[0].rect.FillColor).(color.NRGBA), color.NRGBAModel.Convert(theme.Color(theme.ColorNameInputBackground)).(color.NRGBA); got != want {
 		t.Fatalf("light country card color = %#v, want %#v", got, want)
+	}
+}
+
+func TestHomeSubtitleUsesThemedSecondaryText(t *testing.T) {
+	app := test.NewTempApp(t)
+	appTheme := &brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight}
+	app.Settings().SetTheme(appTheme)
+	w := &Window{app: app}
+	home := newHomeSection(w)
+	renderer := home.subtitle.CreateRenderer()
+	richText, ok := renderer.Objects()[0].(*widget.RichText)
+	if !ok {
+		t.Fatal("home subtitle renderer should contain rich text")
+	}
+	segment, ok := richText.Segments[0].(*widget.TextSegment)
+	if !ok || segment.Style.ColorName != theme.ColorNameDisabled {
+		t.Fatal("home subtitle should request the secondary color from its theme")
+	}
+	got := color.NRGBAModel.Convert((compactTextTheme{Theme: appTheme}).Color(segment.Style.ColorName, theme.VariantLight)).(color.NRGBA)
+	want := color.NRGBAModel.Convert(stationMetadataLight).(color.NRGBA)
+	if got != want {
+		t.Fatalf("home subtitle color = %#v, want themed secondary color %#v", got, want)
 	}
 }
 
@@ -200,6 +223,8 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
 	w := &Window{app: app, window: window, store: storage.New(app)}
+	w.home = newHomeSection(w)
+	w.appContent = container.NewVBox(w.home.subtitle, w.home.Container)
 	o := &onboarding{window: w, pendingCode: "IT", suggested: Country{Code: "IT", Name: "Italy"}, selected: Country{Code: "IT", Name: "Italy"}}
 	w.onboarding = o
 	o.showCountryLoading()
@@ -249,6 +274,13 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	}
 	if got, want := o.loadSteps[2].label.Text, "Radio experience ready"; got != want {
 		t.Fatalf("final status = %q, want %q", got, want)
+	}
+	test.Tap(o.loadContinue)
+	if window.Content() != w.appContent {
+		t.Fatal("Continue should show the app after onboarding")
+	}
+	if got, want := w.home.subtitle.Text, "Popular stations in Italy"; got != want {
+		t.Fatalf("home subtitle = %q after onboarding, want %q", got, want)
 	}
 }
 
