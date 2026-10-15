@@ -207,6 +207,16 @@ func (s *stationList) refreshTheme() {
 	}
 }
 
+// refreshFavorites updates the favorite state of visible rows and rebuilds the list.
+func (s *stationList) refreshFavorites() {
+	for _, row := range s.rows {
+		s.setFavoriteIcon(row)
+	}
+	if s.list != nil {
+		s.list.Refresh()
+	}
+}
+
 // setFavoriteIcon shows the theme-colored outline or blue selected heart.
 func (s *stationList) setFavoriteIcon(row *stationListRow) {
 	if s.window.isFavorite(row.station.ID) {

@@ -48,6 +48,7 @@ type Window struct {
 	onboarding           *onboarding
 	home                 *homeSection
 	favorites            *favoritesSection
+	discover             *discoverSection
 	recent               []storage.RecentStation
 	recentSection        *recentSection
 	playerBar            *playerWidget
@@ -487,6 +488,9 @@ func (w *Window) toggleFavorite(station radio.Station) {
 	}
 	if w.favorites != nil {
 		w.favorites.refresh()
+	}
+	if w.discover != nil {
+		w.discover.rows.refreshFavorites()
 	}
 	if w.recentSection != nil {
 		w.recentSection.refresh()

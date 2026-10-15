@@ -8,7 +8,39 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/radio"
+	"go.lucor.dev/fynetune/internal/storage"
+	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 )
+
+func TestDiscoverFavoriteRefreshesImmediately(t *testing.T) {
+	app := test.NewTempApp(t)
+	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
+	window := test.NewTempWindow(t, nil)
+	w := &Window{app: app, window: window, store: storage.New(app)}
+	discover := newDiscoverSection(w)
+	w.discover = discover
+	discover.rows.setStations([]radio.Station{{ID: "station", Name: "Station"}})
+	window.SetContent(discover.Container)
+	window.Show()
+
+	var row *stationListRow
+	for _, visibleRow := range discover.rows.rows {
+		row = visibleRow
+		break
+	}
+	if row == nil {
+		t.Fatal("discover station row was not created")
+	}
+	if got, want := row.favorite.Icon.Name(), icons.Favorites().Name(); got != want {
+		t.Fatalf("initial favorite icon = %q, want %q", got, want)
+	}
+
+	test.Tap(row.favorite)
+	if got, want := row.favorite.Icon.Name(), icons.FavoritesActive().Name(); got != want {
+		t.Fatalf("favorite icon after tap = %q, want %q", got, want)
+	}
+}
 
 // TestDiscoverCountryPicker checks that suggestions overlay the results and that
 // choosing, cancelling, and clearing a country retain the correct filter value.

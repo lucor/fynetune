@@ -28,6 +28,7 @@ func newApp(w *Window) fyne.CanvasObject {
 	recent := newRecentSection(w)
 	w.recentSection = recent
 	discover := newDiscoverSection(w)
+	w.discover = discover
 	pages := []fyne.CanvasObject{
 		home.Container,
 		favorites.Container,
