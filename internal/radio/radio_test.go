@@ -55,6 +55,7 @@ func TestStopCancelsStreamAndSwitchCancelsPreviousSession(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/mpeg")
 		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "compressed")
 		w.(http.Flusher).Flush()
 		if r.URL.Path == "/old" {
 			close(oldStarted)
@@ -66,9 +67,10 @@ func TestStopCancelsStreamAndSwitchCancelsPreviousSession(t *testing.T) {
 		<-r.Context().Done()
 		close(newCanceled)
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 
 	player := NewPlayer(newTestStreamOpener(server.Client()), testDecoders(t), testAudioOutput{})
+	t.Cleanup(func() { _ = player.Close() })
 	player.Play(Station{ID: "old", Name: "Old", URL: server.URL + "/old"})
 	waitSignal(t, oldStarted, "old station request")
 	waitState(t, player, StatePlaying)

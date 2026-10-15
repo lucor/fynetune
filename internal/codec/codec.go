@@ -2,6 +2,7 @@
 package codec
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -100,6 +101,11 @@ func NameFromMIMEType(contentType string) CodecName {
 	}
 }
 
+// isADTSHeader recognizes the sync word and layer bits of an AAC ADTS header.
+func isADTSHeader(prefix []byte) bool {
+	return len(prefix) >= 2 && prefix[0] == 0xff && prefix[1]&0xf6 == 0xf0
+}
+
 // NewRegistry creates an empty registry. Use it when supplying decoders
 // explicitly, such as in tests or a custom application configuration.
 func NewRegistry() *Registry {
@@ -126,10 +132,20 @@ func (r *Registry) Register(name CodecName, newDecoder func(io.Reader) (Decoder,
 	return nil
 }
 
-// Decode creates the decoder registered for the stream's codec.
-func (r *Registry) Decode(reader io.Reader, info StreamInfo) (Decoder, error) {
+// Decode creates the decoder registered for the stream's codec and updates info
+// when the audio header identifies a different codec. info must be non-nil.
+func (r *Registry) Decode(reader io.Reader, info *StreamInfo) (Decoder, error) {
 	if r == nil {
 		return nil, ErrNilRegistry
+	}
+	if info.MIMEType != "" && info.Codec == NameMP3 {
+		buffered := bufio.NewReader(reader)
+		prefix, _ := buffered.Peek(2)
+		// Some radio servers label AAC streams as audio/mpeg.
+		if isADTSHeader(prefix) {
+			info.Codec = NameAAC
+		}
+		reader = buffered
 	}
 	name := normalize(info.Codec)
 	newDecoder, ok := r.decoders[name]

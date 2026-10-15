@@ -26,3 +26,25 @@ func TestNameFromMIMEType(t *testing.T) {
 		})
 	}
 }
+
+func TestIsADTSHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prefix []byte
+		want   bool
+	}{
+		{name: "MPEG-4 AAC", prefix: []byte{0xff, 0xf1}, want: true},
+		{name: "MPEG-2 AAC", prefix: []byte{0xff, 0xf9}, want: true},
+		{name: "AAC with CRC", prefix: []byte{0xff, 0xf0}, want: true},
+		{name: "MP3", prefix: []byte{0xff, 0xfb}},
+		{name: "invalid sync word", prefix: []byte{0xfe, 0xf1}},
+		{name: "short prefix", prefix: []byte{0xff}},
+		{name: "empty prefix"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isADTSHeader(tc.prefix); got != tc.want {
+				t.Fatalf("isADTSHeader(% x) = %t, want %t", tc.prefix, got, tc.want)
+			}
+		})
+	}
+}

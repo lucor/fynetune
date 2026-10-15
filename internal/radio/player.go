@@ -279,7 +279,7 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	if !p.setState(ctx, session, StateBuffering, station, nil, 0) {
 		return ctx.Err()
 	}
-	decoded, err := p.decoders.Decode(stream, info)
+	decoded, err := p.decoders.Decode(stream, &info)
 	if err != nil {
 		return fmt.Errorf("unable to decode %s stream: %w", info.Codec, err)
 	}

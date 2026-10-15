@@ -23,9 +23,11 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 		name, mime string
 		fixture    func(*testing.T) []byte
 		rate       int
+		codec      codec.CodecName
 	}{
-		{name: "MP3", mime: "audio/mpeg", fixture: mp3RadioFixture, rate: 44100},
-		{name: "AAC-LC", mime: "audio/aacp", fixture: aacRadioFixture, rate: 48000},
+		{name: "MP3", mime: "audio/mpeg", fixture: mp3RadioFixture, rate: 44100, codec: codec.NameMP3},
+		{name: "AAC-LC", mime: "audio/aacp", fixture: aacRadioFixture, rate: 48000, codec: codec.NameAAC},
+		{name: "AAC-LC reported as MP3", mime: "audio/mpeg", fixture: aacRadioFixture, rate: 48000, codec: codec.NameAAC},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			compressed := tc.fixture(t)
@@ -46,11 +48,17 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer stream.Close()
-			decoder, err := codec.New().Decode(stream, info)
+			decoder, err := codec.New().Decode(stream, &info)
 			if err != nil {
 				t.Fatalf("create decoder: %v", err)
 			}
 			defer decoder.Close()
+			if info.Codec != tc.codec {
+				t.Fatalf("detected codec = %q, want %q", info.Codec, tc.codec)
+			}
+			if info.URL != server.URL || info.MIMEType != tc.mime {
+				t.Fatalf("decoder changed source information: %+v", info)
+			}
 			output := &captureOutput{}
 			playback, err := output.Play(context.Background(), decoder, appaudio.PCMFormat{SampleRate: decoder.SampleRate(), Channels: decoder.Channels(), BitDepth: 16}, 1)
 			if err != nil {

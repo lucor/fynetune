@@ -110,7 +110,7 @@ func TestDTSFailureDuringDecoderProbeRemainsRetryable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = registry.Decode(stream, info)
+	_, err = registry.Decode(stream, &info)
 	if !errors.Is(err, io.ErrUnexpectedEOF) || !retry.ShouldRetry(err) {
 		t.Fatalf("decoder probe error = %v, want retryable stream interruption", err)
 	}
