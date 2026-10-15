@@ -117,13 +117,12 @@ func NewRegistry() *Registry {
 	return &Registry{decoders: make(map[CodecName]func(io.Reader) (Decoder, error))}
 }
 
-// Register adds a decoder for a codec name. Codec names are matched without
-// regard to case or surrounding whitespace.
+// Register adds a decoder for an exact codec name. Use the canonical constants
+// when registering a built-in codec.
 func (r *Registry) Register(name CodecName, newDecoder func(io.Reader) (Decoder, error)) error {
 	if r == nil {
 		return ErrNilRegistry
 	}
-	name = normalize(name)
 	if name == "" {
 		return ErrEmptyCodecName
 	}
@@ -218,9 +217,4 @@ func identifyOgg(reader *bufio.Reader) (CodecName, error) {
 		return NameOPUS, nil
 	}
 	return NameOGG, nil
-}
-
-// normalize trims surrounding whitespace and uppercases a codec name.
-func normalize(name CodecName) CodecName {
-	return CodecName(strings.ToUpper(strings.TrimSpace(string(name))))
 }

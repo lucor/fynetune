@@ -2,6 +2,7 @@ package codec
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
 )
@@ -86,5 +87,22 @@ func TestIdentifyCodec(t *testing.T) {
 				t.Fatal("codec probe consumed stream bytes")
 			}
 		})
+	}
+}
+
+func TestRegisterUsesExactCodecName(t *testing.T) {
+	registry := NewRegistry()
+	constructor := func(io.Reader) (Decoder, error) { return nil, nil }
+	if err := registry.Register(NameAAC, constructor); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := registry.decoders[NameAAC]; !ok {
+		t.Fatal("registered decoder is missing under its canonical codec name")
+	}
+	if _, ok := registry.decoders["aac"]; ok {
+		t.Fatal("registration changed the codec name")
+	}
+	if err := registry.Register(NameAAC, constructor); !errors.Is(err, ErrDecoderAlreadyRegistered) {
+		t.Fatalf("duplicate registration error = %v, want ErrDecoderAlreadyRegistered", err)
 	}
 }
