@@ -34,3 +34,19 @@ README for SDK overrides and APK signing behavior.
 Fyne and Oto require platform development libraries; see the README for the
 platform prerequisites. Keep public documentation, comments, and diagnostics in
 plain, idiomatic English.
+
+## Website
+
+Run `mise run website-build` to copy the shared logo, favicon, and screenshot into
+`website/`, or `mise run website-preview` to prepare and serve the page at
+`http://127.0.0.1:8000`. The copied files are ignored by Git; edit their originals
+in `internal/ui/assets/logo.svg`, `internal/ui/assets/icon.svg`, and
+`assets/screenshot.png`.
+
+The website workflow prepares assets for pull requests and deploys from `main` to GitHub
+Pages. Set the repository's Pages publishing source to **GitHub Actions** before
+the first deployment.
+
+The workflow inserts the analytics snippet into the published HTML on `main`;
+local previews and pull request builds do not load analytics. Edit the snippet
+in `.github/workflows/website.yml` to change the tracking configuration.

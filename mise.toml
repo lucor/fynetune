@@ -19,6 +19,15 @@ run = "go mod download"
 description = "Start FyneTune from source"
 run = "go run ."
 
+[tasks.website-build]
+description = "Prepare shared assets for the static website"
+run = "bash .github/scripts/prepare_website.sh"
+
+[tasks.website-preview]
+description = "Preview the website at http://127.0.0.1:8000"
+depends = ["website-build"]
+run = "python3 -m http.server 8000 --bind 127.0.0.1 --directory website"
+
 [tasks.start-debug]
 description = "Start FyneTune from source with debug logs enabled"
 run = "go run ."

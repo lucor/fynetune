@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="An open-source internet radio player for Linux, macOS, Windows, FreeBSD and Android.">
+  <meta name="theme-color" content="#f7f8fa">
+  <title>FyneTune — A simple internet radio player</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="container navigation" aria-label="Main navigation">
+      <a class="brand" href="./" aria-label="FyneTune home">
+        <img class="brand-logo" src="fynetune-logo.svg" alt="FyneTune">
+      </a>
+      <div class="navigation-links">
+        <a class="navigation-link" href="#features">Features</a>
+        <a class="navigation-link" href="#open">Open source</a>
+        <a class="button button-outline button-small button-star" href="https://github.com/lucor/fynetune"><span aria-hidden="true">☆</span> Star on GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-rings" aria-hidden="true"></div>
+      <div class="container hero-layout">
+        <div class="hero-copy">
+          <h1>A simple <span>internet radio player.</span></h1>
+          <p class="hero-description">Browse stations, save your favorites, and listen on desktop or Android. No account required.</p>
+          <div class="button-row">
+            <a class="button button-dark" href="https://github.com/lucor/fynetune/releases/latest">Download</a>
+            <a class="button button-outline" href="https://github.com/lucor/fynetune">View source <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="platforms" aria-label="Available for Linux, macOS, Windows, FreeBSD and Android">
+            <p class="platforms-label">Available for</p>
+            <ul>
+              <li><img class="platform-icon" src="icons/linux.svg" alt="" width="16" height="16">Linux</li>
+              <li><img class="platform-icon" src="icons/apple.svg" alt="" width="16" height="16">macOS</li>
+              <li><img class="platform-icon" src="icons/windows.svg" alt="" width="16" height="16">Windows</li>
+              <li><img class="platform-icon" src="icons/freebsd.svg" alt="" width="16" height="16">FreeBSD</li>
+              <li><img class="platform-icon" src="icons/android.svg" alt="" width="16" height="16">Android</li>
+            </ul>
+          </div>
+        </div>
+        <div class="hero-artwork">
+          <span class="accent-bar accent-bar-tall" aria-hidden="true"></span>
+          <span class="accent-bar accent-bar-short" aria-hidden="true"></span>
+          <div class="screenshot-frame">
+            <img src="fynetune-ui.png" alt="FyneTune application showing stations, playback and navigation">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features-section" id="features">
+      <div class="container features-layout">
+        <div class="features-heading">
+          <h2>Find, save and listen.</h2>
+        </div>
+        <div class="features">
+          <article class="feature">
+            <span class="feature-number">01</span>
+            <div><h3>Discover stations</h3><p>Browse and search internet radio stations from <a href="https://www.radio-browser.info/">Radio Browser</a>.</p></div>
+          </article>
+          <article class="feature">
+            <span class="feature-number">02</span>
+            <div><h3>Keep your favorites</h3><p>Save stations you like and revisit recently played ones.</p></div>
+          </article>
+          <article class="feature">
+            <span class="feature-number">03</span>
+            <div><h3>See what’s playing</h3><p>See the artist and track title when the station provides them.</p></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="open-section" id="open">
+      <div class="container open-layout">
+        <div>
+          <p class="eyebrow">Built in the open</p>
+          <h2>A small, open-source project.</h2>
+          <p>FyneTune is built with Go and Fyne, using one shared codebase across desktop and Android. Available under the <a href="https://github.com/lucor/fynetune/blob/main/LICENSE">MIT license</a>.</p>
+        </div>
+        <a class="button button-light" href="https://github.com/lucor/fynetune">Browse the repository <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-content">
+      <span>FyneTune · Open-source internet radio</span>
+    </div>
+  </footer>
+</body>
+</html>
