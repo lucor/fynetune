@@ -10,12 +10,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bluenviron/gohlslib/v2"
 	"github.com/bluenviron/gohlslib/v2/pkg/codecs"
 	"github.com/bluenviron/gohlslib/v2/pkg/playlist"
+	"github.com/bluenviron/gohlslib/v2/pkg/playlist/primitives"
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/codec/aac"
@@ -121,7 +123,7 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 
 // openAfterHLSFailure retries startup failures that can be caused by AAC data
 // split across PES packets or timestamps that prevent the first AAC unit from
-// reaching the caller.
+// reaching the caller, as well as gohlslib's rejection of a zero start offset.
 func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error) (io.ReadCloser, codec.StreamInfo, error) {
 	if !shouldRetryAACSegments(err) {
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w", err)
@@ -133,14 +135,15 @@ func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error)
 	return stream, info, nil
 }
 
-// shouldRetryAACSegments recognizes upstream MPEG-TS startup failures for
-// which the local reader can reconstruct AAC frames and bypass HLS timestamps.
+// shouldRetryAACSegments recognizes upstream startup failures for which the
+// local reader can reconstruct AAC frames and bypass HLS timing hints.
 func shouldRetryAACSegments(err error) bool {
 	if err == nil {
 		return false
 	}
 	message := err.Error()
 	return errors.Is(err, io.EOF) ||
+		message == "TIME-OFFSET missing" ||
 		(strings.Contains(message, "unable to decode ADTS:") && strings.Contains(message, "invalid frame length")) ||
 		strings.Contains(message, "difference between DTS and system time is too big") ||
 		strings.Contains(message, "HLS stream produced no AAC data")
@@ -202,7 +205,7 @@ func (c *Client) resolvePackedMediaPlaylist(ctx context.Context, rawURL string) 
 		if err != nil {
 			return nil, nil, err
 		}
-		parsed, err := playlist.Unmarshal(data)
+		parsed, err := unmarshalAACPlaylist(data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("parse HLS playlist %q: %w", current, err)
 		}
@@ -227,6 +230,28 @@ func (c *Client) resolvePackedMediaPlaylist(ctx context.Context, rawURL string) 
 		}
 	}
 	return nil, nil, fmt.Errorf("packed AAC playlist nesting limit exceeded")
+}
+
+// unmarshalAACPlaylist works around gohlslib rejecting an explicit zero
+// EXT-X-START offset as missing. The AAC fallback chooses its own starting
+// segment, so this optional hint can be omitted without affecting playback.
+func unmarshalAACPlaylist(data []byte) (playlist.Playlist, error) {
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		value, ok := strings.CutPrefix(strings.TrimSpace(string(line)), "#EXT-X-START:")
+		if !ok {
+			continue
+		}
+		var attributes primitives.Attributes
+		if err := attributes.Unmarshal(value); err != nil {
+			continue
+		}
+		offset, err := strconv.ParseFloat(attributes["TIME-OFFSET"], 64)
+		if err == nil && offset == 0 {
+			lines[i] = nil
+		}
+	}
+	return playlist.Unmarshal(bytes.Join(lines, []byte("\n")))
 }
 
 // downloadPackedPlaylist fetches a bounded playlist and returns its final URL.
@@ -365,7 +390,7 @@ func (c *Client) runAACSegments(
 			slog.Warn("could not reload AAC HLS playlist", "url", mediaURL.String(), "error", err)
 			continue
 		}
-		parsed, err := playlist.Unmarshal(body)
+		parsed, err := unmarshalAACPlaylist(body)
 		if err != nil {
 			slog.Warn("could not parse AAC HLS playlist", "url", finalURL.String(), "error", err)
 			continue
