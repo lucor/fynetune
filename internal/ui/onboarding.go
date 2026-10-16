@@ -428,6 +428,7 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 		err = w.store.SaveSettings(settings)
 		if err == nil {
 			w.settings = settings
+			w.refreshSettingsCountry()
 			// An empty successful response is ready too; nil means setup has not completed.
 			if stations == nil {
 				stations = []radio.Station{}
@@ -459,7 +460,6 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 		}
 		w.home.subtitle.SetText(homeSubtitle(w.settings.DiscoveryCountry))
 		w.home.setStations(stations)
-		w.refreshSettingsCountry()
 		w.onboarding = nil
 		w.setContent(w.appContent)
 		return

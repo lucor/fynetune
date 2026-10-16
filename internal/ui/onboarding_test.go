@@ -85,12 +85,17 @@ func TestCountryCodeFromLocale(t *testing.T) {
 
 // TestSettingsCountryChange keeps the current view and data until loading succeeds.
 func TestSettingsCountryChange(t *testing.T) {
-	for _, fail := range []bool{false, true} {
-		name := "success"
-		if fail {
-			name = "network error"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		selectedCode string
+		wantCountry  string
+		fail         bool
+	}{
+		{name: "selected country", selectedCode: "IT", wantCountry: "@IT"},
+		{name: "any country", wantCountry: "*"},
+		{name: "network error", selectedCode: "IT", wantCountry: "@US", fail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			base := test.NewTempApp(t)
 			base.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
 			driver := &startupTestDriver{Driver: base.Driver(), completed: make(chan func(), 1)}
@@ -106,13 +111,19 @@ func TestSettingsCountryChange(t *testing.T) {
 				}
 			})
 			directory := &startupTestDirectory{gate: gate, stations: []radio.Station{{ID: "new"}}}
-			if fail {
+			if tc.fail {
 				directory.err = errors.New("network unavailable")
 			}
-			w := &Window{app: app, window: test.NewTempWindow(t, nil), directory: directory, store: storage.New(app)}
+			appTheme := &brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight}
+			app.Settings().SetTheme(appTheme)
+			w := &Window{app: app, window: test.NewTempWindow(t, nil), theme: appTheme, radioPlayer: &trayTestPlayer{}, directory: directory, store: storage.New(app)}
 			w.settings.DiscoveryCountry = "@US"
 			if err := w.store.SaveSettings(w.settings); err != nil {
 				t.Fatal(err)
+			}
+			w.settingsPage()
+			if w.settingsCountryName.Text != discoveryCountry("@US").Name || w.settingsCountryFlag.Text != countryOptionFlag("US") {
+				t.Fatal("Settings should initially show the saved country and flag")
 			}
 			w.home = newHomeSection(w)
 			w.home.setStations([]radio.Station{{ID: "previous"}})
@@ -127,16 +138,16 @@ func TestSettingsCountryChange(t *testing.T) {
 			w.setContent(picker)
 			w.window.Resize(fyne.NewSize(480, 800))
 			w.window.Show()
-			o := &onboarding{window: w, fromSettings: true, selected: Country{Code: "IT", Name: "Italy"}}
+			o := &onboarding{window: w, fromSettings: true, selected: Country{Code: tc.selectedCode}}
 			w.onboarding = o
-			o.startCountrySetup("IT")
+			o.startCountrySetup(tc.selectedCode)
 			if w.window.Content() != picker || o.loadingDialog == nil {
 				t.Fatal("country loading must use a modal over the current view")
 			}
 			if w.settings.DiscoveryCountry != "@US" || w.home.rows.entries[0].station.ID != "previous" {
 				t.Fatal("loading must preserve the current country and stations")
 			}
-			o.startCountrySetup("IT") // The modal also prevents a second loading action.
+			o.startCountrySetup(tc.selectedCode) // The modal also prevents a second loading action.
 			close(gate)
 			waitStartup(t, driver.completed)
 			if directory.calls.Load() != 1 {
@@ -146,12 +157,21 @@ func TestSettingsCountryChange(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if fail {
+			if tc.fail {
 				if saved.DiscoveryCountry != "@US" || w.settings.DiscoveryCountry != "@US" || w.home.rows.entries[0].station.ID != "previous" || w.window.Content() != picker {
 					t.Fatal("failed country change must preserve the saved country, list, and picker")
 				}
-			} else if saved.DiscoveryCountry != "@IT" || w.home.rows.entries[0].station.ID != "new" || w.window.Content() != w.appContent || w.bottomNavigation.Selected != 4 {
-				t.Fatal("successful country change must save the new country, update Radio, and stay in Settings")
+				if w.settingsCountryName.Text != discoveryCountry("@US").Name || w.settingsCountryFlag.Text != countryOptionFlag("US") {
+					t.Fatal("failed country change must preserve the Settings country and flag")
+				}
+			} else {
+				if saved.DiscoveryCountry != tc.wantCountry || w.settings.DiscoveryCountry != tc.wantCountry || w.home.rows.entries[0].station.ID != "new" || w.window.Content() != w.appContent || w.bottomNavigation.Selected != 4 {
+					t.Fatalf("successful country change must save %q, update Radio, and stay in Settings", tc.wantCountry)
+				}
+				country := discoveryCountry(tc.wantCountry)
+				if w.settingsCountryName.Text != country.Name || w.settingsCountryFlag.Text != countryOptionFlag(country.Code) {
+					t.Fatalf("Settings should display country %q and its flag", country.Name)
+				}
 			}
 		})
 	}
@@ -219,11 +239,13 @@ func TestCountryPickerCanBeOpenedAgainAfterBack(t *testing.T) {
 
 func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	app := test.NewTempApp(t)
-	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
+	appTheme := &brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight}
+	app.Settings().SetTheme(appTheme)
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
-	w := &Window{app: app, window: window, store: storage.New(app)}
+	w := &Window{app: app, window: window, theme: appTheme, store: storage.New(app), radioPlayer: &trayTestPlayer{}}
 	w.home = newHomeSection(w)
+	w.settingsPage() // Build the Settings country controls before onboarding finishes.
 	w.appContent = container.NewVBox(w.home.subtitle, w.home.Container)
 	o := &onboarding{window: w, pendingCode: "IT", suggested: Country{Code: "IT", Name: "Italy"}, selected: Country{Code: "IT", Name: "Italy"}}
 	w.onboarding = o
@@ -249,6 +271,9 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	settings, err := w.store.Load()
 	if err != nil || settings.DiscoveryCountry != "@IT" {
 		t.Fatalf("saved country = %q, error = %v", settings.DiscoveryCountry, err)
+	}
+	if w.settings.DiscoveryCountry != "@IT" || w.settingsCountryName.Text != "Italy" || w.settingsCountryFlag.Text != countryOptionFlag("IT") {
+		t.Fatal("successful onboarding must save and display the selected country in Settings")
 	}
 	query, popular := radioStationQuery("@IT")
 	var cached []radio.Station
