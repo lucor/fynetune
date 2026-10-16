@@ -30,7 +30,15 @@ Download the `.tar.xz` package for your architecture and extract it. From the ex
 
 ### macOS
 
-Download the `.dmg` package for your Mac: `darwin_amd64` for Intel or `darwin_arm64` for Apple Silicon. Open the disk image and drag FyneTune to Applications. Because FyneTune is not notarized, remove the quarantine attribute after copying it:
+Install FyneTune with Homebrew using the [Lucor tap](https://github.com/lucor/homebrew-tap):
+
+```sh
+brew install --cask lucor/tap/fynetune
+```
+
+Alternatively, download the `.dmg` package from the [Releases page](https://github.com/lucor/fynetune/releases/latest): `darwin_amd64` for Intel or `darwin_arm64` for Apple Silicon. Open the disk image and drag FyneTune to Applications.
+
+FyneTune is not notarized. After installing with either method, remove the quarantine attribute to allow macOS to open the app:
 
 ```sh
 xattr -r -d com.apple.quarantine /Applications/FyneTune.app
