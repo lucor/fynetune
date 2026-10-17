@@ -13,6 +13,7 @@ import (
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/icy"
+	"go.lucor.dev/fynetune/internal/metadata"
 	retrypolicy "go.lucor.dev/fynetune/internal/retry"
 )
 
@@ -39,12 +40,12 @@ const (
 
 // Event reports a playback state change or a track metadata update.
 type Event struct {
-	State      PlayerState       // Playback state associated with this event.
-	Station    Station           // Station associated with this event, when available.
-	Metadata   icy.TrackMetadata // Track metadata; zero-valued for state-only events.
-	StreamInfo codec.StreamInfo  // Resolved stream information, when available.
-	Err        error             // Failure that caused a reconnect or stopped playback.
-	Attempt    int               // Reconnect attempt count; zero before the first retry.
+	State      PlayerState      // Playback state associated with this event.
+	Station    Station          // Station associated with this event, when available.
+	Metadata   metadata.Track   // Track metadata; zero-valued for state-only events.
+	StreamInfo codec.StreamInfo // Resolved stream information, when available.
+	Err        error            // Failure that caused a reconnect or stopped playback.
+	Attempt    int              // Reconnect attempt count; zero before the first retry.
 }
 
 // Player controls station playback and exposes playback events to the UI.

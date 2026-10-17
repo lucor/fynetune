@@ -7,40 +7,18 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"go.lucor.dev/fynetune/internal/metadata"
 )
-
-// TrackMetadata contains normalized fields parsed from an ICY StreamTitle.
-type TrackMetadata struct {
-	RawTitle string // Normalized StreamTitle value.
-	Artist   string // Artist parsed from the title, when available.
-	Title    string // Track title, or RawTitle when it could not be parsed.
-	Album    string // Album parsed from extended station metadata.
-	Year     string // Release year parsed from extended station metadata.
-	Parsed   bool   // Whether Artist and Title were parsed successfully.
-}
-
-// String returns available track fields in display order.
-func (m TrackMetadata) String() string {
-	parts := make([]string, 0, 4)
-	for _, field := range []string{m.Artist, m.Title, m.Album, m.Year} {
-		if field = strings.TrimSpace(field); field != "" {
-			parts = append(parts, field)
-		}
-	}
-	if len(parts) == 0 {
-		return m.RawTitle
-	}
-	return strings.Join(parts, " - ")
-}
 
 // ParseTrackMetadata extracts track fields from the raw value of StreamTitle.
 // It leaves artist and title unparsed when the separator is ambiguous.
-func ParseTrackMetadata(raw string) TrackMetadata {
+func ParseTrackMetadata(raw string) metadata.Track {
 	normalized := strings.TrimRight(strings.TrimSpace(raw), "\x00")
 	normalized = strings.TrimSpace(normalized)
-	metadata := TrackMetadata{RawTitle: normalized, Title: normalized}
+	track := metadata.Track{RawTitle: normalized, Title: normalized}
 	if normalized == "" {
-		return metadata
+		return track
 	}
 	if parsed, ok := parseExtendedTildeMetadata(normalized); ok {
 		return parsed
@@ -51,12 +29,12 @@ func ParseTrackMetadata(raw string) TrackMetadata {
 
 	occurrences := findSeparators(normalized)
 	if len(occurrences) == 0 {
-		return metadata
+		return track
 	}
 	separator := occurrences[0].rune
 	for _, occurrence := range occurrences[1:] {
 		if occurrence.rune != separator {
-			return metadata
+			return track
 		}
 	}
 
@@ -78,7 +56,7 @@ func ParseTrackMetadata(raw string) TrackMetadata {
 		parsed.RawTitle = normalized
 		return parsed
 	}
-	return metadata
+	return track
 }
 
 type separatorOccurrence struct {
@@ -97,25 +75,25 @@ const fallbackSeparator = '*'
 var uuidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
 
 // parseSongStarMetadata parses the Song*title*artist*year*UUID format.
-func parseSongStarMetadata(raw string) (TrackMetadata, bool) {
+func parseSongStarMetadata(raw string) (metadata.Track, bool) {
 	fields := strings.Split(raw, "*")
 	if len(fields) != 5 || !strings.EqualFold(strings.TrimSpace(fields[0]), "Song") {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	year := strings.TrimSpace(fields[3])
 	if len(year) != 4 {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	if _, err := strconv.Atoi(year); err != nil {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	title := strings.TrimSpace(fields[1])
 	artist := strings.TrimSpace(fields[2])
 	uuid := strings.TrimSpace(fields[4])
 	if title == "" || artist == "" || uuidPattern.FindString(uuid) != uuid {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
-	return TrackMetadata{
+	return metadata.Track{
 		RawTitle: raw,
 		Artist:   artist,
 		Title:    title,
@@ -126,32 +104,32 @@ func parseSongStarMetadata(raw string) (TrackMetadata, bool) {
 
 // parseExtendedTildeMetadata parses the extended ICY fields used by some
 // broadcasters: artist, title, album, year, duration, two timestamps, and station.
-func parseExtendedTildeMetadata(raw string) (TrackMetadata, bool) {
+func parseExtendedTildeMetadata(raw string) (metadata.Track, bool) {
 	fields := strings.Split(raw, "~")
 	if len(fields) < 9 || fields[0] == "" || fields[1] == "" || fields[2] == "" {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	if len(fields[3]) != 4 {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	if _, err := strconv.Atoi(fields[3]); err != nil {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	if fields[4] != "" {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	if _, err := strconv.Atoi(fields[5]); err != nil {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
 	for _, value := range fields[6:8] {
 		if _, err := time.Parse("2006-01-02T15:04:05", value); err != nil {
-			return TrackMetadata{}, false
+			return metadata.Track{}, false
 		}
 	}
 	if strings.TrimSpace(fields[8]) == "" {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
-	return TrackMetadata{
+	return metadata.Track{
 		RawTitle: raw,
 		Artist:   strings.TrimSpace(fields[0]),
 		Title:    strings.TrimSpace(fields[1]),
@@ -209,11 +187,11 @@ func insideUUID(index int, ranges [][]int) bool {
 	return false
 }
 
-func splitMetadataAt(value string, index, end int) (TrackMetadata, bool) {
+func splitMetadataAt(value string, index, end int) (metadata.Track, bool) {
 	artist := strings.TrimSpace(value[:index])
 	title := strings.TrimSpace(value[end:])
 	if artist == "" || title == "" {
-		return TrackMetadata{}, false
+		return metadata.Track{}, false
 	}
-	return TrackMetadata{Artist: artist, Title: title, Parsed: true}, true
+	return metadata.Track{Artist: artist, Title: title, Parsed: true}, true
 }

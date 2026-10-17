@@ -79,19 +79,3 @@ func TestParseTrackMetadataExtendedStationFields(t *testing.T) {
 		}
 	}
 }
-
-func TestTrackMetadataStringOmitsEmptyFields(t *testing.T) {
-	tests := []struct {
-		metadata TrackMetadata
-		want     string
-	}{
-		{metadata: TrackMetadata{Artist: "Artist", Title: "Song", Year: "2000"}, want: "Artist - Song - 2000"},
-		{metadata: TrackMetadata{Artist: "Artist", Album: "Album"}, want: "Artist - Album"},
-		{metadata: TrackMetadata{RawTitle: "Station ID"}, want: "Station ID"},
-	}
-	for _, test := range tests {
-		if got := test.metadata.String(); got != test.want {
-			t.Errorf("String() = %q, want %q", got, test.want)
-		}
-	}
-}
