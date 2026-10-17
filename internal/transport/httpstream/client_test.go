@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.lucor.dev/fynetune/internal/metadata"
 	"go.lucor.dev/fynetune/internal/playlist"
 	"go.lucor.dev/fynetune/internal/retry"
 	"go.lucor.dev/fynetune/internal/version"
@@ -35,8 +36,8 @@ func TestOpenNegotiatesAndFiltersICY(t *testing.T) {
 	}))
 	defer server.Close()
 
-	var title string
-	reader, info, err := New(server.Client()).Open(context.Background(), server.URL, func(metadata string) { title = metadata })
+	var update metadata.Event
+	reader, info, err := New(server.Client()).Open(context.Background(), server.URL, func(value metadata.Event) { update = value })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +46,12 @@ func TestOpenNegotiatesAndFiltersICY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != "abcdefgh" || title != "Artist - Song" {
-		t.Fatalf("audio=%q metadata=%q", data, title)
+	if string(data) != "abcdefgh" {
+		t.Fatalf("audio=%q", data)
+	}
+	want := metadata.Event{Kind: metadata.Replace, Source: metadata.SourceICY, Track: metadata.Track{RawTitle: "Artist - Song", Artist: "Artist", Title: "Song", Parsed: true}}
+	if update != want {
+		t.Fatalf("metadata = %+v, want %+v", update, want)
 	}
 	if info.Codec != "MP3" || info.MIMEType != "audio/mpeg" {
 		t.Fatalf("stream info = %+v", info)

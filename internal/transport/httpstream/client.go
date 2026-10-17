@@ -15,6 +15,7 @@ import (
 
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/icy"
+	"go.lucor.dev/fynetune/internal/metadata"
 	"go.lucor.dev/fynetune/internal/playlist"
 	"go.lucor.dev/fynetune/internal/retry"
 	hlsstream "go.lucor.dev/fynetune/internal/transport/hls"
@@ -40,11 +41,11 @@ func New(client *http.Client) *Client {
 	return &Client{client: client, hls: hlsstream.New(client)}
 }
 
-func (c *Client) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) Open(ctx context.Context, url string, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	return c.open(ctx, url, onMetadata, 0)
 }
 
-func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(metadata.Event), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
@@ -82,7 +83,7 @@ func (c *Client) open(ctx context.Context, rawURL string, onMetadata func(string
 }
 
 // openStream wraps a response body with ICY metadata filtering and stream information.
-func openStream(reader io.Reader, closer io.Closer, header http.Header, contentType, rawURL string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+func openStream(reader io.Reader, closer io.Closer, header http.Header, contentType, rawURL string, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	interval, err := metadataInterval(header)
 	if err != nil {
 		closeResponseBody(closer)
@@ -90,14 +91,14 @@ func openStream(reader io.Reader, closer io.Closer, header http.Header, contentT
 	}
 	onTitle := func(raw string) {
 		if onMetadata != nil {
-			onMetadata(raw)
+			onMetadata(metadata.Event{Kind: metadata.Replace, Source: metadata.SourceICY, Track: icy.ParseTrackMetadata(raw)})
 		}
 	}
 	stream := &streamReader{Reader: icy.NewReader(reader, interval, onTitle), closer: closer}
 	return stream, codec.StreamInfo{URL: rawURL, Codec: codec.NameFromMIMEType(contentType), MIMEType: contentType}, nil
 }
 
-func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadCloser, body *bufio.Reader, kind playlist.Kind, contentType, rawURL string, onMetadata func(metadata.Event), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	if kind == playlist.KindUnsupported {
 		closeResponseBody(responseBody)
 		return nil, codec.StreamInfo{}, retry.NoRetry(fmt.Errorf("%w: %w (content type %q, URL %q)", ErrUnsupportedStreamFormat, ErrPlaylistUnsupported, contentType, rawURL))
@@ -119,7 +120,7 @@ func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadC
 }
 
 // resolvePlaylist tries each valid stream URL until one opens or all entries fail.
-func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(string), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) resolvePlaylist(ctx context.Context, rawURL string, entries []playlist.Entry, onMetadata func(metadata.Event), playlistDepth int) (io.ReadCloser, codec.StreamInfo, error) {
 	if len(entries) == 0 {
 		return nil, codec.StreamInfo{}, retry.NoRetry(playlist.ErrNoValidEntries)
 	}

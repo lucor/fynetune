@@ -12,7 +12,6 @@ import (
 
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
-	"go.lucor.dev/fynetune/internal/icy"
 	"go.lucor.dev/fynetune/internal/metadata"
 	retrypolicy "go.lucor.dev/fynetune/internal/retry"
 )
@@ -60,8 +59,10 @@ type Player interface {
 }
 
 // StreamOpener resolves a station URL and opens its audio stream.
+// Metadata callbacks may run during Open or while the returned stream is read.
+// Updates describe complete track snapshots at the current read position.
 type StreamOpener interface {
-	Open(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error)
+	Open(context.Context, string, func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error)
 }
 
 // Engine coordinates stream resolution, decoding, audio output, and reconnects.
@@ -250,25 +251,14 @@ func (p *Engine) run(ctx context.Context, session uint64, station Station) {
 
 // connect resolves, decodes, and plays one stream attempt until it ends or is canceled.
 func (p *Engine) connect(ctx context.Context, session uint64, station Station) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	updates := &attemptMetadata{player: p, ctx: ctx, session: session, station: station}
 	streamURL := station.URL
 	if station.ResolvedURL != "" {
 		streamURL = station.ResolvedURL
 	}
-	var info codec.StreamInfo
-	stream, info, err := p.streams.Open(ctx, streamURL, func(raw string) {
-		metadata := icy.ParseTrackMetadata(raw)
-		if metadata.RawTitle == "" {
-			return
-		}
-		p.mu.Lock()
-		if p.session != session || ctx.Err() != nil {
-			p.mu.Unlock()
-			return
-		}
-		p.emit(Event{State: StatePlaying, Station: station, Metadata: metadata, StreamInfo: info})
-		p.mu.Unlock()
-		slog.Debug("ICY StreamTitle received", "station", station.Name, "station_id", station.ID, "raw_title", metadata.RawTitle, "artist", metadata.Artist, "title", metadata.Title, "album", metadata.Album, "year", metadata.Year, "parsed", metadata.Parsed)
-	})
+	stream, info, err := p.streams.Open(ctx, streamURL, updates.apply)
 	if err != nil {
 		return err
 	}
@@ -312,7 +302,9 @@ func (p *Engine) connect(ctx context.Context, session uint64, station Station) e
 	}
 	p.active = playback
 	p.state = StatePlaying
-	p.emit(Event{State: StatePlaying, Station: station, StreamInfo: info})
+	updates.info = info
+	updates.playing = true
+	p.emit(Event{State: StatePlaying, Station: station, Metadata: updates.track, StreamInfo: info})
 	p.mu.Unlock()
 
 	ticker := time.NewTicker(100 * time.Millisecond)

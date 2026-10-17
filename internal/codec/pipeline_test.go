@@ -18,6 +18,7 @@ import (
 	waxogg "github.com/colespringer/waxflow/container/ogg"
 	appaudio "go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
+	"go.lucor.dev/fynetune/internal/metadata"
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
 )
 
@@ -50,7 +51,7 @@ func TestHTTPICYDecoderOutputPipeline(t *testing.T) {
 			defer server.Close()
 
 			var title string
-			stream, info, err := httpstream.New(server.Client()).Open(context.Background(), server.URL, func(value string) { title = value })
+			stream, info, err := httpstream.New(server.Client()).Open(context.Background(), server.URL, func(value metadata.Event) { title = value.Track.RawTitle })
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -42,3 +42,39 @@ func TestTrackString(t *testing.T) {
 		})
 	}
 }
+
+func TestTrackEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		a    Track
+		b    Track
+		want bool
+	}{
+		{
+			name: "structured fields ignore source representation",
+			a:    Track{RawTitle: "Artist - Song", Artist: "Artist", Title: "Song"},
+			b:    Track{RawTitle: "Song by Artist", Artist: "Artist", Title: "Song"},
+			want: true,
+		},
+		{
+			name: "structured field changes track",
+			a:    Track{Artist: "Artist", Title: "Song"},
+			b:    Track{Artist: "Artist", Title: "Another song"},
+			want: false,
+		},
+		{
+			name: "unstructured titles compare source text",
+			a:    Track{RawTitle: "Station ID"},
+			b:    Track{RawTitle: "Another station ID"},
+			want: false,
+		},
+		{name: "empty tracks are equal", want: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.a.Equal(tc.b); got != tc.want {
+				t.Fatalf("Equal(%+v) = %t, want %t", tc.b, got, tc.want)
+			}
+		})
+	}
+}

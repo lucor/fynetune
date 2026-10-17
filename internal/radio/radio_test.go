@@ -18,6 +18,7 @@ import (
 
 	"go.lucor.dev/fynetune/internal/audio"
 	"go.lucor.dev/fynetune/internal/codec"
+	"go.lucor.dev/fynetune/internal/metadata"
 )
 
 func TestStationJSONAndValidation(t *testing.T) {
@@ -126,7 +127,7 @@ func TestNoRetryAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 	defer slog.SetDefault(previous)
 
 	var opens atomic.Int32
-	streams := streamOpenerFunc(func(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+	streams := streamOpenerFunc(func(context.Context, string, func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 		opens.Add(1)
 		return io.NopCloser(strings.NewReader("compressed")), codec.StreamInfo{Codec: "AAC"}, nil
 	})
@@ -150,9 +151,9 @@ func TestNoRetryAACDecoderFailureLogsCauseAndStopsRetries(t *testing.T) {
 	}
 }
 
-type streamOpenerFunc func(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error)
+type streamOpenerFunc func(context.Context, string, func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error)
 
-func (f streamOpenerFunc) Open(ctx context.Context, url string, onMetadata func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+func (f streamOpenerFunc) Open(ctx context.Context, url string, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	return f(ctx, url, onMetadata)
 }
 
@@ -162,7 +163,7 @@ func newTestStreamOpener(client *http.Client) StreamOpener {
 
 type testHTTPStreamOpener struct{ client *http.Client }
 
-func (o *testHTTPStreamOpener) Open(ctx context.Context, url string, _ func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+func (o *testHTTPStreamOpener) Open(ctx context.Context, url string, _ func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
@@ -180,7 +181,7 @@ type failingStreamOpener struct {
 	calls chan int
 }
 
-func (o *failingStreamOpener) Open(context.Context, string, func(string)) (io.ReadCloser, codec.StreamInfo, error) {
+func (o *failingStreamOpener) Open(context.Context, string, func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	o.mu.Lock()
 	o.count++
 	count := o.count
