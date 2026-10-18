@@ -52,11 +52,16 @@ func newestPackedSegment(pl *playlist.Media) (*playlist.MediaSegment, int) {
 	return pl.Segments[index], index
 }
 
-// waitPackedReload pauses between live playlist requests and remains cancelable.
-func waitPackedReload(ctx context.Context, targetDuration int) error {
+// waitPackedReload spaces live playlist requests without adding another delay
+// for time already spent downloading and delivering audio to the consumer.
+func waitPackedReload(ctx context.Context, targetDuration int, lastReload time.Time) error {
 	delay := time.Duration(targetDuration) * time.Second / 2
 	if delay < 250*time.Millisecond {
 		delay = 250 * time.Millisecond
+	}
+	delay -= time.Since(lastReload)
+	if delay <= 0 {
+		return ctx.Err()
 	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()

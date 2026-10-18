@@ -143,6 +143,7 @@ func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error,
 	if !shouldRetryAACSegments(err) {
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w", err)
 	}
+	slog.Debug("using AAC HLS segment fallback", "url", uri, "reason", err)
 	stream, info, fallbackErr := c.openAACSegments(ctx, uri, onMetadata)
 	if fallbackErr != nil {
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w (AAC segment fallback: %w)", err, fallbackErr)
@@ -353,6 +354,7 @@ func (c *Client) runAACSegments(
 	trackMetadata *hlsMetadata,
 	firstMetadata metadataSegment,
 ) {
+	lastReload := time.Now()
 	if err := writeMetadataAAC(writer, firstData, firstMetadata, trackMetadata, false); err != nil {
 		_ = writer.CloseWithError(err)
 		return
@@ -403,10 +405,11 @@ func (c *Client) runAACSegments(
 			_ = writer.Close()
 			return
 		}
-		if err := waitPackedReload(ctx, current.TargetDuration); err != nil {
+		if err := waitPackedReload(ctx, current.TargetDuration, lastReload); err != nil {
 			_ = writer.CloseWithError(err)
 			return
 		}
+		lastReload = time.Now()
 		body, finalURL, err := c.downloadPackedPlaylist(ctx, mediaURL.String())
 		if err != nil {
 			slog.Warn("could not reload AAC HLS playlist", "url", mediaURL.String(), "error", err)
