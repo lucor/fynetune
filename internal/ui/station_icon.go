@@ -67,13 +67,6 @@ func (s *stationList) loadStationIcon(ctx context.Context, station radio.Station
 		needsValidation := record.URL != "" && (record.ETag != "" || record.LastModified != "") &&
 			time.Since(result.UpdatedAt) >= stationIconValidationInterval
 		if result.Found && result.Fresh && !needsValidation {
-			slog.Debug("station icon cache hit",
-				"station", station.Name,
-				"url", record.URL,
-				"format", cached.Format,
-				"size", cached.Size,
-				"updated_at", result.UpdatedAt,
-			)
 			return cached, nil
 		}
 	}

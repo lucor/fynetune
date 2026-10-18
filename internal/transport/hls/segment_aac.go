@@ -8,6 +8,7 @@ import (
 
 	"github.com/asticode/go-astits"
 	"go.lucor.dev/fynetune/internal/codec/aac"
+	"go.lucor.dev/fynetune/internal/id3"
 )
 
 const (
@@ -22,6 +23,15 @@ const (
 func extractSegmentAAC(ctx context.Context, data []byte) ([]byte, error) {
 	if isMPEGTS(data) {
 		return extractMPEGTSAAC(ctx, data)
+	}
+	// Packed-audio tags are framing, not AAC. Removing them also keeps the
+	// previous segment's last ADTS frame adjacent to the next audio frame.
+	for bytes.HasPrefix(data, []byte("ID3")) {
+		tag, err := id3.Parse(data)
+		if err != nil {
+			break
+		}
+		data = data[tag.Size:]
 	}
 	if _, err := aac.NewFramer(bytes.NewReader(data)).ReadFrame(); err != nil {
 		return nil, fmt.Errorf("%w: %v", errNotPackedAAC, err)

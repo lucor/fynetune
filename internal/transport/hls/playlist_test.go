@@ -72,7 +72,7 @@ func TestOpenZeroStartOffsetAndReload(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	stream, _, err := New(server.Client()).Open(ctx, server.URL+"/master.m3u8")
+	stream, _, err := New(server.Client()).Open(ctx, server.URL+"/master.m3u8", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,8 +3,12 @@ package metadata
 // Source identifies the metadata format that produced an event.
 type Source string
 
-// SourceICY identifies metadata carried in ICY blocks.
-const SourceICY Source = "icy"
+const (
+	// SourceICY identifies metadata carried in ICY blocks.
+	SourceICY Source = "icy"
+	// SourceID3 identifies metadata carried in ID3 tags.
+	SourceID3 Source = "id3"
+)
 
 // EventKind distinguishes a complete track snapshot from an explicit clear.
 type EventKind uint8

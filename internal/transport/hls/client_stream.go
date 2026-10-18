@@ -14,11 +14,12 @@ import (
 
 // clientStream adapts a gohlslib client to an ADTS reader and owns its lifecycle.
 type clientStream struct {
-	reader *io.PipeReader
-	writer *io.PipeWriter
-	client *gohlslib.Client
-	url    string
-	ready  chan error
+	reader   *io.PipeReader
+	writer   *io.PipeWriter
+	client   *gohlslib.Client
+	url      string
+	ready    chan error
+	metadata *hlsMetadata
 
 	readyOnce sync.Once
 	writeMu   sync.Mutex
@@ -29,6 +30,13 @@ type clientStream struct {
 
 // onTracks selects a supported AAC track and registers its data callback.
 func (s *clientStream) onTracks(tracks []*gohlslib.Track) error {
+	var video bool
+	for _, track := range tracks {
+		if _, ok := track.Codec.(*codecs.H264); ok {
+			video = true
+		}
+	}
+	s.metadata.configure(video)
 	var selected *gohlslib.Track
 	var audioCodec *codecs.MPEG4Audio
 	for _, track := range tracks {
@@ -52,8 +60,8 @@ func (s *clientStream) onTracks(tracks []*gohlslib.Track) error {
 		s.signalReady(err)
 		return err
 	}
-	s.client.OnDataMPEG4Audio(selected, func(_ int64, accessUnits [][]byte) {
-		s.writeAccessUnits(audioCodec, accessUnits)
+	s.client.OnDataMPEG4Audio(selected, func(pts int64, accessUnits [][]byte) {
+		s.writeAccessUnitsAt(audioCodec, accessUnits, pts, selected.ClockRate)
 	})
 	return nil
 }
@@ -65,17 +73,25 @@ func (s *clientStream) signalReady(err error) {
 
 // writeAccessUnits converts AAC access units to ADTS and writes them to the reader.
 func (s *clientStream) writeAccessUnits(audioCodec *codecs.MPEG4Audio, accessUnits [][]byte) {
+	s.writeAccessUnitsAt(audioCodec, accessUnits, 0, 0)
+}
+
+// writeAccessUnitsAt advances timed metadata at each AAC access unit.
+func (s *clientStream) writeAccessUnitsAt(audioCodec *codecs.MPEG4Audio, accessUnits [][]byte, pts int64, clockRate int) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if s.writeErr != nil {
 		return
 	}
-	for _, accessUnit := range accessUnits {
+	for index, accessUnit := range accessUnits {
 		header, err := adtsHeader(audioCodec, len(accessUnit))
 		if err != nil {
 			err = retry.NoRetry(err)
 		}
 		if err == nil {
+			if clockRate == 90000 && s.metadata != nil {
+				s.metadata.advance(pts + int64(index)*1024*90000/int64(audioCodec.Config.SampleRate))
+			}
 			// Signal readiness before writing to the pipe: Open can return and
 			// the decoder can begin reading without deadlocking this callback.
 			s.signalReady(nil)
@@ -104,6 +120,7 @@ func (s *clientStream) Read(p []byte) (int, error) { return s.reader.Read(p) }
 // Close stops the HLS client and closes the stream pipes.
 func (s *clientStream) Close() error {
 	s.closeOnce.Do(func() {
+		s.metadata.close()
 		_ = s.reader.Close()
 		_ = s.writer.CloseWithError(context.Canceled)
 		s.client.Close()

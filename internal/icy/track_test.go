@@ -1,9 +1,35 @@
 package icy
 
 import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
 )
+
+func TestParseTrackMetadataLogsInputAndOutput(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	raw := " AC-DC - Thunderstruck "
+	track := ParseTrackMetadata(raw)
+	var record struct {
+		Source string `json:"source"`
+		Input  string `json:"input"`
+		Track  struct {
+			Artist string `json:"artist"`
+			Title  string `json:"title"`
+		} `json:"track"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	if record.Source != "icy" || record.Input != raw || record.Track.Artist != track.Artist || record.Track.Title != track.Title {
+		t.Fatalf("diagnostics = %s", output.String())
+	}
+}
 
 func TestParseTrackMetadataSupportedSeparators(t *testing.T) {
 	separators := []string{"-", "–", "—", "~", "|"}

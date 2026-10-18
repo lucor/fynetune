@@ -2,7 +2,7 @@
 //
 // Parse accepts a byte slice beginning with one complete tag. Tag.Size reports
 // the bytes occupied by the tag so the caller can locate any following audio
-// data or tags. Parsing neither modifies the input nor performs any I/O.
+// data or tags. Parse neither modifies the input nor performs any I/O.
 //
 // # Text frames
 //
@@ -19,9 +19,23 @@
 // preserves the ID3v2.4 extended-header update flag; callers decide how to apply
 // a partial update to previously received metadata.
 //
-// Values are decoded without inferring musical fields or interpreting provider
+// Parse decodes values without inferring musical fields or interpreting provider
 // payloads. In particular, JSON in TEXT remains text. All non-text frames are
 // skipped, including PRIV transport timestamps and attached pictures.
+//
+// # Track normalization
+//
+// Tag.Track maps decoded source fields to the shared metadata.Track model. Artist,
+// title, and album come from TPE1, TIT2, and TALB. Release year uses a valid date
+// from TDRL, TDRC, or TYER, in that order. Multiple artists are comma-separated.
+// When TIT2 is missing, TIT1 or TXXX grouping supplies unstructured artist/title
+// text using the same generic separator rules as ICY. Standard fields take
+// precedence. TEXT is not interpreted as a title or as provider-specific JSON.
+// Each call returns the tag's own fields; IsUpdate does not merge prior state.
+//
+// At debug level, normalization logs decoded input, the resulting track, and
+// reasons for ignoring fields. Diagnostic text is bounded, while the actual
+// metadata retains its complete values.
 //
 // # Limits and errors
 //

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -83,10 +84,17 @@ func TestStationIconPersistence(t *testing.T) {
 				}
 			}
 			// A fresh list uses the persisted data, without a second HTTP request.
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			t.Cleanup(func() { slog.SetDefault(previous) })
 			restarted := &stationList{window: &Window{app: app}, iconClient: server.Client()}
 			icon, err = restarted.loadStationIcon(context.Background(), station, key)
 			if err != nil || calls.Load() != 1 {
 				t.Fatalf("restart error = %v, requests = %d", err, calls.Load())
+			}
+			if logs.Len() != 0 {
+				t.Fatalf("fresh icon cache reuse should be silent: %s", logs.String())
 			}
 			if tc.name == "svg" {
 				if !bytes.Equal(icon.SVG, payload) {

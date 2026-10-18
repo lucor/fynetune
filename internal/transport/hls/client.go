@@ -21,6 +21,7 @@ import (
 	"github.com/bluenviron/mediacommon/v2/pkg/codecs/mpeg4audio"
 	"go.lucor.dev/fynetune/internal/codec"
 	"go.lucor.dev/fynetune/internal/codec/aac"
+	"go.lucor.dev/fynetune/internal/metadata"
 )
 
 var (
@@ -51,15 +52,24 @@ func New(client *http.Client) *Client {
 // adds an ADTS header to each access unit, and returns the result as an
 // io.ReadCloser. Closing the reader stops the HLS session. If gohlslib cannot
 // initialize packed AAC or fragmented MPEG-TS AAC, Open uses the local segment reader.
-func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.StreamInfo, error) {
+//
+// When onMetadata is non-nil, plaintext MPEG-TS timed ID3 and packed-audio ID3
+// prefixes feed the shared metadata pipeline at the audio read position. The
+// observer reuses downloaded bytes and keeps bounded queues. Encrypted segments,
+// fMP4 metadata, and ID3 tags spanning segment boundaries are not interpreted.
+// Metadata errors do not fail playback. Closing or canceling the stream stops
+// metadata delivery; each new Open starts with independent metadata state.
+func (c *Client) Open(ctx context.Context, uri string, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	reader, writer := io.Pipe()
-	hlsClient := &gohlslib.Client{URI: uri, HTTPClient: c.httpClient}
+	metadata := newHLSMetadata(ctx, onMetadata)
+	hlsClient := &gohlslib.Client{URI: uri, HTTPClient: metadataHTTPClient(c.httpClient, metadata)}
 	stream := &clientStream{
-		reader: reader,
-		writer: writer,
-		client: hlsClient,
-		url:    uri,
-		ready:  make(chan error, 1),
+		reader:   reader,
+		writer:   writer,
+		metadata: metadata,
+		client:   hlsClient,
+		url:      uri,
+		ready:    make(chan error, 1),
 	}
 	hlsClient.OnTracks = stream.onTracks
 	hlsClient.OnDecodeError = stream.onDecodeError
@@ -77,6 +87,7 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 		slog.Debug("downloading HLS part", "url", rawURL)
 	}
 	if err := hlsClient.Start(); err != nil {
+		metadata.close()
 		_ = reader.Close()
 		_ = writer.CloseWithError(err)
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS client: %w", err)
@@ -89,19 +100,22 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 	select {
 	case err := <-stream.ready:
 		if err != nil {
+			metadata.close()
 			_ = reader.Close()
 			_ = writer.CloseWithError(err)
 			hlsClient.Close()
 			return nil, codec.StreamInfo{}, fmt.Errorf("initialize HLS audio track: %w", err)
 		}
 	case err := <-clientDone:
+		metadata.close()
 		_ = reader.Close()
 		_ = writer.CloseWithError(err)
 		if ctx.Err() != nil {
 			return nil, codec.StreamInfo{}, ctx.Err()
 		}
-		return c.openAfterHLSFailure(ctx, uri, err)
+		return c.openAfterHLSFailure(ctx, uri, err, onMetadata)
 	case <-startupTimer.C:
+		metadata.close()
 		_ = reader.Close()
 		_ = writer.CloseWithError(context.DeadlineExceeded)
 		hlsClient.Close()
@@ -109,8 +123,9 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 		if ctx.Err() != nil {
 			return nil, codec.StreamInfo{}, ctx.Err()
 		}
-		return c.openAfterHLSFailure(ctx, uri, err)
+		return c.openAfterHLSFailure(ctx, uri, err, onMetadata)
 	case <-ctx.Done():
+		metadata.close()
 		_ = reader.Close()
 		_ = writer.CloseWithError(ctx.Err())
 		hlsClient.Close()
@@ -124,11 +139,11 @@ func (c *Client) Open(ctx context.Context, uri string) (io.ReadCloser, codec.Str
 // openAfterHLSFailure retries startup failures that can be caused by AAC data
 // split across PES packets or timestamps that prevent the first AAC unit from
 // reaching the caller, as well as gohlslib's rejection of a zero start offset.
-func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) openAfterHLSFailure(ctx context.Context, uri string, err error, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	if !shouldRetryAACSegments(err) {
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w", err)
 	}
-	stream, info, fallbackErr := c.openAACSegments(ctx, uri)
+	stream, info, fallbackErr := c.openAACSegments(ctx, uri, onMetadata)
 	if fallbackErr != nil {
 		return nil, codec.StreamInfo{}, fmt.Errorf("start HLS playback: %w (AAC segment fallback: %w)", err, fallbackErr)
 	}
@@ -152,7 +167,7 @@ func shouldRetryAACSegments(err error) bool {
 // openAACSegments reads AAC from packed ADTS or MPEG-TS segments when the
 // standard demuxer cannot initialize. AAC bytes remain continuous across PES
 // and segment boundaries so the codec framer can reconstruct split frames.
-func (c *Client) openAACSegments(ctx context.Context, uri string) (io.ReadCloser, codec.StreamInfo, error) {
+func (c *Client) openAACSegments(ctx context.Context, uri string, onMetadata func(metadata.Event)) (io.ReadCloser, codec.StreamInfo, error) {
 	mediaURL, mediaPlaylist, err := c.resolvePackedMediaPlaylist(ctx, uri)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
@@ -175,6 +190,10 @@ func (c *Client) openAACSegments(ctx context.Context, uri string) (io.ReadCloser
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
 	}
+	firstMetadata := metadataSegment{}
+	if onMetadata != nil {
+		firstMetadata = scanMetadataSegment(ctx, firstData)
+	}
 	firstData, err = extractSegmentAAC(ctx, firstData)
 	if err != nil {
 		return nil, codec.StreamInfo{}, err
@@ -187,12 +206,13 @@ func (c *Client) openAACSegments(ctx context.Context, uri string) (io.ReadCloser
 
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
-	stream := &packedAACStream{reader: reader, writer: writer, cancel: cancel, done: make(chan struct{})}
+	trackMetadata := newHLSMetadata(ctx, onMetadata)
+	stream := &packedAACStream{reader: reader, writer: writer, cancel: cancel, done: make(chan struct{}), metadata: trackMetadata}
 	nextSequence := mediaPlaylist.MediaSequence + firstIndex
 	go func() {
 		defer close(stream.done)
 		defer cancel()
-		c.runAACSegments(ctx, writer, mediaURL, mediaPlaylist, firstData, nextSequence)
+		c.runAACSegments(ctx, writer, mediaURL, mediaPlaylist, firstData, nextSequence, trackMetadata, firstMetadata)
 	}()
 	return stream, codec.StreamInfo{URL: uri, Codec: "AAC", MIMEType: "application/vnd.apple.mpegurl"}, nil
 }
@@ -330,12 +350,10 @@ func (c *Client) runAACSegments(
 	current *playlist.Media,
 	firstData []byte,
 	nextSequence int,
+	trackMetadata *hlsMetadata,
+	firstMetadata metadataSegment,
 ) {
-	write := func(data []byte) error {
-		_, err := writer.Write(data)
-		return err
-	}
-	if err := write(firstData); err != nil {
+	if err := writeMetadataAAC(writer, firstData, firstMetadata, trackMetadata, false); err != nil {
 		_ = writer.CloseWithError(err)
 		return
 	}
@@ -365,12 +383,16 @@ func (c *Client) runAACSegments(
 				slog.Warn("could not download AAC HLS segment", "url", segmentURL.String(), "error", err)
 				continue
 			}
+			segmentMetadata := metadataSegment{}
+			if trackMetadata != nil {
+				segmentMetadata = scanMetadataSegment(ctx, data)
+			}
 			data, err = extractSegmentAAC(ctx, data)
 			if err != nil {
 				_ = writer.CloseWithError(err)
 				return
 			}
-			if err := write(data); err != nil {
+			if err := writeMetadataAAC(writer, data, segmentMetadata, trackMetadata, segment.Discontinuity); err != nil {
 				_ = writer.CloseWithError(err)
 				return
 			}

@@ -42,7 +42,7 @@ func TestOpenReassemblesAACAcrossPESAndSegments(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	stream, _, err := New(server.Client()).Open(ctx, server.URL+"/radio.m3u8")
+	stream, _, err := New(server.Client()).Open(ctx, server.URL+"/radio.m3u8", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestDTSFailureDuringDecoderProbeRemainsRetryable(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	stream, info, err := New(server.Client()).Open(ctx, server.URL+"/radio.m3u8")
+	stream, info, err := New(server.Client()).Open(ctx, server.URL+"/radio.m3u8", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestAACFallbackRejectsTrackWithoutADTS(t *testing.T) {
 		_, _ = w.Write(segment)
 	}))
 	defer server.Close()
-	stream, _, err := New(server.Client()).openAACSegments(context.Background(), server.URL+"/radio.m3u8")
+	stream, _, err := New(server.Client()).openAACSegments(context.Background(), server.URL+"/radio.m3u8", nil)
 	if stream != nil {
 		_ = stream.Close()
 	}

@@ -112,7 +112,7 @@ func (c *Client) openPlaylistResponse(ctx context.Context, responseBody io.ReadC
 	closeResponseBody(responseBody)
 	if err != nil {
 		if errors.Is(err, playlist.ErrUnsupportedHLS) {
-			return c.hls.Open(ctx, rawURL)
+			return c.hls.Open(ctx, rawURL, onMetadata)
 		}
 		return nil, codec.StreamInfo{}, classifyPlaylistError(err)
 	}

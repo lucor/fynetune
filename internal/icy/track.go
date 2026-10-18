@@ -5,74 +5,26 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"go.lucor.dev/fynetune/internal/metadata"
 )
 
-// ParseTrackMetadata extracts track fields from the raw value of StreamTitle.
-// It leaves artist and title unparsed when the separator is ambiguous.
-func ParseTrackMetadata(raw string) metadata.Track {
-	normalized := strings.TrimRight(strings.TrimSpace(raw), "\x00")
-	normalized = strings.TrimSpace(normalized)
-	track := metadata.Track{RawTitle: normalized, Title: normalized}
-	if normalized == "" {
-		return track
-	}
-	if parsed, ok := parseExtendedTildeMetadata(normalized); ok {
+var uuidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
+
+// ParseTrackMetadata extracts track fields from an ICY StreamTitle and logs
+// the original input and normalized track when debug logging is enabled.
+// Extended ICY formats are interpreted before falling back to generic title text.
+func ParseTrackMetadata(raw string) (track metadata.Track) {
+	defer func() { metadata.DebugNormalization(metadata.SourceICY, raw, track, nil) }()
+	track = metadata.ParseTitle(raw)
+	if parsed, ok := parseExtendedTildeMetadata(track.RawTitle); ok {
 		return parsed
 	}
-	if parsed, ok := parseSongStarMetadata(normalized); ok {
-		return parsed
-	}
-
-	occurrences := findSeparators(normalized)
-	if len(occurrences) == 0 {
-		return track
-	}
-	separator := occurrences[0].rune
-	for _, occurrence := range occurrences[1:] {
-		if occurrence.rune != separator {
-			return track
-		}
-	}
-
-	// A unique spaced separator disambiguates a delimiter from a bare hyphen
-	// inside an artist or title, as in "AC-DC - Thunderstruck".
-	selected := occurrences[0]
-	var spaced separatorOccurrence
-	spacedCount := 0
-	for _, occurrence := range occurrences {
-		if occurrence.spaced {
-			spaced = occurrence
-			spacedCount++
-		}
-	}
-	if spacedCount == 1 {
-		selected = spaced
-	}
-	if parsed, ok := splitMetadataAt(normalized, selected.index, selected.end); ok {
-		parsed.RawTitle = normalized
+	if parsed, ok := parseSongStarMetadata(track.RawTitle); ok {
 		return parsed
 	}
 	return track
 }
-
-type separatorOccurrence struct {
-	rune   rune
-	index  int
-	end    int
-	spaced bool
-}
-
-var supportedSeparators = map[rune]struct{}{
-	'-': {}, '–': {}, '—': {}, '~': {}, '|': {},
-}
-
-const fallbackSeparator = '*'
-
-var uuidPattern = regexp.MustCompile(`(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b`)
 
 // parseSongStarMetadata parses the Song*title*artist*year*UUID format.
 func parseSongStarMetadata(raw string) (metadata.Track, bool) {
@@ -137,61 +89,4 @@ func parseExtendedTildeMetadata(raw string) (metadata.Track, bool) {
 		Year:     fields[3],
 		Parsed:   true,
 	}, true
-}
-
-func findSeparators(value string) []separatorOccurrence {
-	occurrences := make([]separatorOccurrence, 0, 2)
-	fallbackOccurrences := make([]separatorOccurrence, 0, 1)
-	uuidRanges := uuidPattern.FindAllStringIndex(value, -1)
-	for index, separator := range value {
-		_, supported := supportedSeparators[separator]
-		if !supported && separator != fallbackSeparator {
-			continue
-		}
-		end := index + utf8.RuneLen(separator)
-		before, _ := utf8.DecodeLastRuneInString(value[:index])
-		after, _ := utf8.DecodeRuneInString(value[end:])
-		// Hyphens between digits are usually part of dates or numeric IDs in
-		// structured station metadata, rather than artist/title separators.
-		if separator == '-' && unicode.IsDigit(before) && unicode.IsDigit(after) {
-			continue
-		}
-		if separator == '-' && insideUUID(index, uuidRanges) {
-			continue
-		}
-		occurrence := separatorOccurrence{
-			rune: separator, index: index, end: end,
-			spaced: unicode.IsSpace(before) || unicode.IsSpace(after),
-		}
-		if supported {
-			occurrences = append(occurrences, occurrence)
-		} else if !supported {
-			fallbackOccurrences = append(fallbackOccurrences, occurrence)
-		}
-	}
-	// Asterisks are less reliable delimiters than the established separators,
-	// so use them only when the title contains none of those separators.
-	if len(occurrences) == 0 {
-		return fallbackOccurrences
-	}
-	return occurrences
-}
-
-// insideUUID reports whether an index points to a separator inside a UUID.
-func insideUUID(index int, ranges [][]int) bool {
-	for _, r := range ranges {
-		if index >= r[0] && index < r[1] {
-			return true
-		}
-	}
-	return false
-}
-
-func splitMetadataAt(value string, index, end int) (metadata.Track, bool) {
-	artist := strings.TrimSpace(value[:index])
-	title := strings.TrimSpace(value[end:])
-	if artist == "" || title == "" {
-		return metadata.Track{}, false
-	}
-	return metadata.Track{Artist: artist, Title: title, Parsed: true}, true
 }

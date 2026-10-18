@@ -33,7 +33,7 @@ func TestOpenFallsBackForPackedAACSegments(t *testing.T) {
 	}))
 	defer server.Close()
 
-	stream, info, err := New(server.Client()).Open(context.Background(), server.URL+"/master.m3u8")
+	stream, info, err := New(server.Client()).Open(context.Background(), server.URL+"/master.m3u8", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestPackedAACFallbackRejectsMPEGTS(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/radio.m3u8")
+	_, _, err := New(server.Client()).Open(context.Background(), server.URL+"/radio.m3u8", nil)
 	if err == nil || !errors.Is(err, errNotPackedAAC) {
 		t.Fatalf("Open error = %v, want packed AAC fallback rejection", err)
 	}

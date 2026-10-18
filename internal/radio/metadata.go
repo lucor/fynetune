@@ -45,7 +45,6 @@ func (m *attemptMetadata) apply(event metadata.Event) {
 	if m.playing {
 		p.emit(Event{State: StatePlaying, Station: m.station, Metadata: next, StreamInfo: m.info})
 	}
-	slog.Debug("stream metadata received", "station", m.station.Name, "station_id", m.station.ID,
-		"source", event.Source, "kind", event.Kind, "artist", next.Artist, "title", next.Title,
-		"album", next.Album, "year", next.Year)
+	slog.Debug("stream metadata applied", "station", m.station.Name, "station_id", m.station.ID,
+		"source", event.Source, "kind", event.Kind)
 }
