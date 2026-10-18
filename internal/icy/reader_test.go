@@ -3,6 +3,8 @@ package icy
 import (
 	"bytes"
 	"io"
+	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +60,41 @@ func TestReaderReturnsErrorForTruncatedMetadata(t *testing.T) {
 	reader := NewReader(source, 1, nil)
 	if _, err := io.ReadAll(reader); err == nil {
 		t.Fatal("expected truncated metadata error")
+	}
+}
+
+func TestReaderLogsDistinctRawMetadataBlocks(t *testing.T) {
+	previous := slog.Default()
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	var source bytes.Buffer
+	block := make([]byte, 48)
+	copy(block, "StreamUrl='https://example.invalid/live';")
+	for range 2 {
+		source.WriteString("abcd")
+		source.WriteByte(byte(len(block) / 16))
+		source.Write(block)
+	}
+	clear(block)
+	copy(block, "StreamTitle='Artist - Song';")
+	source.WriteString("efgh")
+	source.WriteByte(byte(len(block) / 16))
+	source.Write(block)
+	var titles []string
+	reader := NewReader(&source, 4, func(title string) { titles = append(titles, title) })
+	audio, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(audio) != "abcdabcdefgh" || len(titles) != 1 || titles[0] != "Artist - Song" {
+		t.Fatalf("audio = %q, titles = %q", audio, titles)
+	}
+	if got := strings.Count(logs.String(), "ICY metadata block received"); got != 2 {
+		t.Fatalf("distinct block log count = %d, want 2; logs: %s", got, logs.String())
+	}
+	if !strings.Contains(logs.String(), "StreamUrl") {
+		t.Fatalf("raw unsupported field missing from diagnostics: %s", logs.String())
 	}
 }

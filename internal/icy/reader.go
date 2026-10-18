@@ -4,6 +4,7 @@ package icy
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"regexp"
 	"strings"
 )
@@ -16,6 +17,7 @@ type Reader struct {
 	interval  int
 	remaining int
 	onTitle   func(string)
+	lastBlock string
 }
 
 // NewReader wraps r and removes one ICY metadata block after each audio interval.
@@ -64,6 +66,13 @@ func (r *Reader) readMetadata(length int) error {
 	block := make([]byte, length)
 	if _, err := io.ReadFull(r.r, block); err != nil {
 		return err
+	}
+	input := strings.TrimRight(string(block), "\x00 \t\r\n")
+	if input != r.lastBlock {
+		r.lastBlock = input
+		if input != "" {
+			slog.Debug("ICY metadata block received", "input", input)
+		}
 	}
 	match := titlePattern.FindSubmatch(block)
 	if len(match) < 2 {

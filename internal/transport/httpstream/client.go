@@ -89,6 +89,9 @@ func openStream(reader io.Reader, closer io.Closer, header http.Header, contentT
 		closeResponseBody(closer)
 		return nil, codec.StreamInfo{}, retry.NoRetry(err)
 	}
+	slog.Debug("HTTP stream metadata capabilities", "url", rawURL, "content_type", contentType,
+		"server", header.Get("Server"), "icy_metaint", interval, "icy_metadata_advertised", interval > 0,
+		"icy_name", header.Get("icy-name"), "icy_description", header.Get("icy-description"))
 	onTitle := func(raw string) {
 		if onMetadata != nil {
 			onMetadata(metadata.Event{Kind: metadata.Replace, Source: metadata.SourceICY, Track: icy.ParseTrackMetadata(raw)})

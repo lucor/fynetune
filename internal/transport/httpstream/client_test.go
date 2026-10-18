@@ -1,13 +1,16 @@
 package httpstream
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,6 +58,31 @@ func TestOpenNegotiatesAndFiltersICY(t *testing.T) {
 	}
 	if info.Codec != "MP3" || info.MIMEType != "audio/mpeg" {
 		t.Fatalf("stream info = %+v", info)
+	}
+}
+
+func TestOpenLogsWhenHTTPStreamDoesNotAdvertiseICY(t *testing.T) {
+	previous := slog.Default()
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("Server", "example-radio")
+		_, _ = io.WriteString(w, "audio")
+	}))
+	defer server.Close()
+	stream, _, err := New(server.Client()).Open(context.Background(), server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if _, err := io.ReadAll(stream); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "icy_metadata_advertised=false") || !strings.Contains(logs.String(), "server=example-radio") {
+		t.Fatalf("missing HTTP metadata capability diagnostics: %s", logs.String())
 	}
 }
 
