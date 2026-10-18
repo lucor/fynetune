@@ -6,5 +6,8 @@
 # Shared assets copied by the website preparation task.
 /website/fynetune-logo.svg
 /website/favicon.svg
+/website/favicon.ico
+/website/apple-touch-icon.png
+/website/social-preview.png
 /website/fynetune-ui.png
 /.github/scripts/__pycache__/
