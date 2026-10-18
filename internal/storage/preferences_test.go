@@ -109,3 +109,99 @@ func TestInvalidRecentJSONIsPreserved(t *testing.T) {
 		t.Fatalf("corrupt recent stations value overwritten: %q", got)
 	}
 }
+
+func TestCustomStationsPersistWithLegacyFavoritesAndRecent(t *testing.T) {
+	app := test.NewTempApp(t)
+	preferences := app.Preferences()
+	preferences.SetString("stations", `[{"id":"directory-station","name":"Directory radio","url":"https://radio.invalid/live","resolved_url":"https://radio.invalid/resolved","homepage":"https://example.com","codec":"MP3","country_code":"IT"}]`)
+	preferences.SetInt("station_defaults_version", stationMigrationVersion)
+	store := New(app)
+	settings, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := settings.Stations[0]
+	if legacy.Source != "" || legacy.IsCustom() {
+		t.Fatal("a saved station without a source must retain directory behavior")
+	}
+	custom, err := radio.NewCustomStation("Custom radio", legacy.URL, "https://custom.invalid", settings.Stations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Stations = append(settings.Stations, custom)
+	settings.Selected = custom.ID
+	if err := store.SaveStations(settings.Stations); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	recent := []RecentStation{
+		{Station: custom, PlayedAt: time.Date(2026, time.October, 19, 10, 0, 0, 0, time.UTC)},
+		{Station: legacy, PlayedAt: time.Date(2026, time.October, 19, 9, 0, 0, 0, time.UTC)},
+	}
+	if err := store.SaveRecent(recent); err != nil {
+		t.Fatal(err)
+	}
+
+	// Recreate the app with only the persisted values, without sharing station objects.
+	restartedApp := test.NewTempApp(t)
+	for _, key := range []string{"stations", "selected_station_id", recentStationsPreference} {
+		restartedApp.Preferences().SetString(key, preferences.String(key))
+	}
+	restartedApp.Preferences().SetInt("station_defaults_version", preferences.Int("station_defaults_version"))
+	restarted := New(restartedApp)
+	loaded, err := restarted.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loaded.Stations, settings.Stations) || loaded.Selected != custom.ID {
+		t.Fatalf("stations or selection changed after reload: %+v", loaded)
+	}
+	loadedRecent, err := restarted.LoadRecent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(loadedRecent, recent) {
+		t.Fatalf("recent stations changed after reload: %+v", loadedRecent)
+	}
+	if len(loaded.Stations) != 2 || !loaded.Stations[1].IsCustom() {
+		t.Fatal("custom and directory favorites sharing a URL must remain separate")
+	}
+	if restartedApp.Preferences().Int("station_defaults_version") != stationMigrationVersion {
+		t.Fatal("custom stations must not require a new station migration")
+	}
+}
+
+func TestCustomStationURLChangePreservesSavedSelection(t *testing.T) {
+	app := test.NewTempApp(t)
+	store := New(app)
+	station, err := radio.NewCustomStation("Custom", "https://radio.invalid/old", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveStations([]radio.Station{station}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSettings(Settings{Selected: station.ID}); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := New(app).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := radio.UpdateCustomStation(settings.Stations[0], "Updated", "https://radio.invalid/new", "", settings.Stations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveStations([]radio.Station{updated}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := New(app).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.Stations) != 1 || reloaded.Stations[0].ID != station.ID || reloaded.Selected != station.ID || reloaded.Stations[0].URL != updated.URL || !reloaded.Stations[0].IsCustom() {
+		t.Fatalf("URL edit changed identity or selection: %+v", reloaded)
+	}
+}

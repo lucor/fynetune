@@ -7,8 +7,16 @@ import (
 	"reflect"
 	"testing"
 
+	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/version"
 )
+
+func TestStationRecordMarksRadioBrowserSource(t *testing.T) {
+	station := (stationRecord{UUID: "uuid-1", Name: "Radio", URL: "https://radio.invalid/live"}).station()
+	if station.Source != radio.StationSourceRadioBrowser {
+		t.Fatalf("station source = %q, want %q", station.Source, radio.StationSourceRadioBrowser)
+	}
+}
 
 // TestSearchBuildsQueryAndMapsStations checks request filters and station normalization.
 func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
@@ -39,7 +47,7 @@ func TestSearchBuildsQueryAndMapsStations(t *testing.T) {
 		t.Fatalf("got %d stations", len(stations))
 	}
 	got := stations[0]
-	if got.ID != "uuid-1" || got.Name != "Jazz FM" || got.URL != "https://playlist.example/listen.m3u" || got.ResolvedURL != "https://stream.example/jazz.mp3" {
+	if got.ID != "uuid-1" || got.Source != radio.StationSourceRadioBrowser || got.Name != "Jazz FM" || got.URL != "https://playlist.example/listen.m3u" || got.ResolvedURL != "https://stream.example/jazz.mp3" {
 		t.Fatalf("unexpected station mapping: %#v", got)
 	}
 	if got.Codec != "MP3" || got.Bitrate != 128 || got.Country != "Italy" || got.CountryCode != "IT" || got.Language != "Italian" {

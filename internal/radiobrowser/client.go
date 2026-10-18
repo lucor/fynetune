@@ -285,7 +285,7 @@ func (s stationRecord) station() radio.Station {
 		}
 	}
 	return radio.Station{
-		ID: s.UUID, Name: strings.TrimSpace(s.Name), URL: strings.TrimSpace(s.URL),
+		ID: s.UUID, Source: radio.StationSourceRadioBrowser, Name: strings.TrimSpace(s.Name), URL: strings.TrimSpace(s.URL),
 		ResolvedURL: strings.TrimSpace(s.ResolvedURL), Homepage: strings.TrimSpace(s.Homepage),
 		Favicon: strings.TrimSpace(s.Favicon), Codec: strings.TrimSpace(s.Codec),
 		Bitrate: s.Bitrate, Country: strings.TrimSpace(s.Country),

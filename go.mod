@@ -10,6 +10,7 @@ require (
 	github.com/colespringer/waxflow v0.0.0-20260923050513-446ca3124d89
 	github.com/ebitengine/oto/v3 v3.5.1
 	github.com/fyne-io/image v0.1.1
+	github.com/google/uuid v1.6.0
 	github.com/pion/opus v0.1.0
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.60.0
@@ -41,7 +42,6 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/google/licensecheck v0.3.1 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.0 // indirect
 	github.com/jackmordaunt/icns/v2 v2.2.7 // indirect
