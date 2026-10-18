@@ -8,6 +8,7 @@ These PNGs are generated from official [Lucide Icons](https://github.com/lucide-
 - Light stroke: #565656.
 - Dark stroke: #F3F3F3.
 - Active stroke: #0B8FF3.
+- Danger stroke: #E5484D.
 Regenerate from the repository root with the mise run generate-icons task. To choose another Lucide release, pass --version TAG to internal/ui/assets/icons/generate-icons.sh.
 
 The Lucide license and copyright notices are preserved in [LICENSE](LICENSE).

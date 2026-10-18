@@ -1,14 +1,11 @@
 package ui
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"go.lucor.dev/fynetune/internal/ui/assets/icons"
-	"go.lucor.dev/fynetune/internal/ui/widgets"
 )
 
 // favoritesSection shows saved stations and their empty state.
@@ -18,7 +15,8 @@ type favoritesSection struct {
 	rows     *stationList
 	content  *fyne.Container
 	empty    fyne.CanvasObject
-	saved    *widgets.Badge
+	add      *widget.Button
+	actions  *fyne.Container
 	subtitle *widget.Label
 }
 
@@ -26,18 +24,18 @@ type favoritesSection struct {
 func newFavoritesSection(w *Window) *favoritesSection {
 	rows := newStationList(w, false)
 	content := container.NewStack()
-	saved := widgets.NewBadge(
-		"",
-		theme.Color(theme.ColorNameSelection),
-		theme.Color(stationMetadataColorName),
-	)
 	subtitle := widget.NewLabel("Your saved radio stations")
+	add := widget.NewButtonWithIcon("", icons.Plus(), w.addCustomStation)
+	add.Importance = widget.LowImportance
 	section := &favoritesSection{
-		window:   w,
-		rows:     rows,
-		content:  content,
-		empty:    favoritesEmptyState(w),
-		saved:    saved,
+		window:  w,
+		rows:    rows,
+		content: content,
+		empty:   favoritesEmptyState(w),
+		add:     add,
+		actions: container.NewHBox(
+			container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(44), add)),
+		),
 		subtitle: subtitle,
 	}
 	section.Container = content
@@ -48,7 +46,6 @@ func newFavoritesSection(w *Window) *favoritesSection {
 // refresh synchronizes the saved stations and selects the list or empty state.
 func (s *favoritesSection) refresh() {
 	stations := s.window.settings.Stations
-	s.saved.SetText(fmt.Sprintf("%d saved", len(stations)))
 	s.rows.setStations(stations)
 	if len(stations) == 0 {
 		s.content.Objects = []fyne.CanvasObject{s.empty}
@@ -58,21 +55,29 @@ func (s *favoritesSection) refresh() {
 	s.content.Refresh()
 }
 
-// refreshTheme applies the active theme colors to the saved-count badge.
-func (s *favoritesSection) refreshTheme() {
-	s.saved.SetColors(
-		theme.Color(theme.ColorNameSelection),
-		theme.Color(stationMetadataColorName),
-	)
-}
-
 // favoritesEmptyState explains how to add the first saved station.
 func favoritesEmptyState(w *Window) fyne.CanvasObject {
 	icon := w.newThemeIcon(icons.Favorites)
-	icon.Resize(fyne.NewSquareSize(42))
+	icon.Resize(fyne.NewSquareSize(36))
 	title := widget.NewLabelWithStyle("No favorites yet", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	detail := widget.NewLabel("Save a station from Radio to keep it here.")
+	title.SizeName = theme.SizeNameSubHeadingText
+	detail := widget.NewLabel("Save your favorite stations\nor add your own stream.")
 	detail.Alignment = fyne.TextAlignCenter
 	detail.Wrapping = fyne.TextWrapWord
-	return container.NewCenter(container.NewVBox(icon, title, detail))
+	add := widget.NewButton("Add station", w.addCustomStation)
+	add.Importance = widget.HighImportance
+	explore := widget.NewButton("Explore stations", func() {
+		if w.bottomNavigation != nil {
+			w.bottomNavigation.Select(3)
+		}
+	})
+	explore.Importance = widget.LowImportance
+	buttonSize := fyne.NewSize(220, 48)
+	return container.NewCenter(container.NewVBox(
+		container.NewCenter(icon),
+		container.NewCenter(title),
+		container.NewCenter(detail),
+		container.NewGridWrap(buttonSize, add),
+		container.NewGridWrap(buttonSize, explore),
+	))
 }

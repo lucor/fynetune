@@ -121,9 +121,6 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		if w.sectionHeader != nil {
 			w.sectionHeader.Refresh()
 		}
-		if w.favorites != nil {
-			w.favorites.refreshTheme()
-		}
 		w.refreshSettingsTheme()
 		slog.Debug("Fyne theme variant changed",
 			"variant", themeVariantName(variant),
@@ -169,9 +166,6 @@ func (w *Window) setAppearance(appearance string) {
 	}
 	if w.sectionHeader != nil {
 		w.sectionHeader.Refresh()
-	}
-	if w.favorites != nil {
-		w.favorites.refreshTheme()
 	}
 	w.refreshSettingsTheme()
 	err := w.saveSettings()

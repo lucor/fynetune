@@ -35,6 +35,10 @@ Fyne and Oto require platform development libraries; see the README for the
 platform prerequisites. Keep public documentation, comments, and diagnostics in
 plain, idiomatic English.
 
+Use Lucide for every new interface icon so the icon style stays consistent.
+Add icons through `internal/ui/assets/icons/generate-icons.sh` and expose them
+through `internal/ui/assets/icons/icons.go` rather than using one-off icon sources.
+
 ## Website
 
 Run `mise run website-build` to copy the shared logo, favicon, and screenshot into

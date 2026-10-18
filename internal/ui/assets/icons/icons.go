@@ -11,7 +11,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-//go:embed active/*.png dark/*.png light/*.png
+//go:embed active/*.png danger/*.png dark/*.png light/*.png
 var assets embed.FS
 
 var resources = loadResources()
@@ -116,6 +116,21 @@ func PictureInPicture() fyne.Resource { return themed("picture-in-picture") }
 
 // Info returns the theme-colored information icon.
 func Info() fyne.Resource { return themed("info") }
+
+// MoreVertical returns the theme-colored vertical overflow icon.
+func MoreVertical() fyne.Resource { return themed("ellipsis-vertical") }
+
+// Pencil returns the theme-colored edit icon.
+func Pencil() fyne.Resource { return themed("pencil") }
+
+// Trash returns the theme-colored delete icon.
+func Trash() fyne.Resource { return themed("trash") }
+
+// TrashDanger returns the delete icon in the app's destructive-action color.
+func TrashDanger() fyne.Resource { return resource("danger/trash") }
+
+// Plus returns the theme-colored add icon.
+func Plus() fyne.Resource { return themed("plus") }
 
 // ExternalLink returns the theme-colored external link icon.
 func ExternalLink() fyne.Resource { return themed("external-link") }

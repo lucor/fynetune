@@ -42,8 +42,8 @@ func newApp(w *Window) fyne.CanvasObject {
 	headerText := widget.NewLabelWithStyle("Radio", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	w.sectionHeader = headerText
 	headerText.SizeName = theme.SizeNameHeadingText
-	sectionHeader := container.NewBorder(nil, nil, nil, favorites.saved, headerText)
-	favorites.saved.Hide()
+	sectionHeader := container.NewBorder(nil, nil, nil, favorites.actions, headerText)
+	favorites.actions.Hide()
 	favorites.subtitle.Hide()
 	recent.subtitle.Hide()
 	discover.subtitle.Hide()
@@ -82,9 +82,9 @@ func newApp(w *Window) fyne.CanvasObject {
 			favorites.subtitle.Hide()
 		}
 		if index == 1 {
-			favorites.saved.Show()
+			favorites.actions.Show()
 		} else {
-			favorites.saved.Hide()
+			favorites.actions.Hide()
 		}
 		if index == 2 {
 			recent.subtitle.Show()

@@ -53,6 +53,7 @@ type stationListRow struct {
 	description  *widget.Label
 	codecBadge   *widgets.Badge
 	bitrateBadge *widgets.Badge
+	manage       *widget.Button
 }
 
 // newStationList builds the shared station list for Home, Favorites, or Recent.
@@ -120,6 +121,11 @@ func (s *stationList) newRow() fyne.CanvasObject {
 		s.window.toggleFavorite(row.station)
 	})
 	row.favorite.Importance = widget.LowImportance
+	row.manage = widget.NewButtonWithIcon("", icons.MoreVertical(), func() {
+		s.showStationMenu(row)
+	})
+	row.manage.Importance = widget.LowImportance
+	row.manage.Hide()
 	row.title = widget.NewLabelWithStyle("Station", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.description = widget.NewLabel("Station details")
@@ -151,7 +157,7 @@ func (s *stationList) newRow() fyne.CanvasObject {
 
 // wrapRow adds the common icon and favorite controls around section content.
 func (s *stationList) wrapRow(row *stationListRow, content fyne.CanvasObject) fyne.CanvasObject {
-	favorite := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(44), row.favorite))
+	favorite := container.NewCenter(container.NewGridWrap(fyne.NewSquareSize(44), container.NewStack(row.favorite, row.manage)))
 	item := container.NewBorder(
 		nil, nil,
 		container.NewCenter(row.artwork),
@@ -219,11 +225,36 @@ func (s *stationList) refreshFavorites() {
 
 // setFavoriteIcon shows the theme-colored outline or blue selected heart.
 func (s *stationList) setFavoriteIcon(row *stationListRow) {
+	row.manage.SetIcon(icons.MoreVertical())
+	if row.station.IsCustom() {
+		row.favorite.Hide()
+		row.manage.Show()
+		return
+	}
+	row.manage.Hide()
+	row.favorite.Show()
 	if s.window.isFavorite(row.station.ID) {
 		row.favorite.SetIcon(icons.FavoritesActive())
 		return
 	}
 	row.favorite.SetIcon(icons.Favorites())
+}
+
+// showStationMenu opens custom station actions beside the row's overflow button.
+func (s *stationList) showStationMenu(row *stationListRow) {
+	station := row.station
+	menu := fyne.NewMenu("",
+		fyne.NewMenuItemWithIcon("Edit station", icons.Pencil(), func() { s.window.editCustomStation(station) }),
+		fyne.NewMenuItemWithIcon("Delete station", icons.TrashDanger(), func() {
+			s.window.confirmDeleteCustomStation(station)
+		}),
+	)
+	widget.ShowPopUpMenuAtRelativePosition(
+		menu,
+		s.window.window.Canvas(),
+		fyne.NewPos(0, row.manage.Size().Height),
+		row.manage,
+	)
 }
 
 // newStationArtwork displays the FyneTune icon until a station favicon loads.

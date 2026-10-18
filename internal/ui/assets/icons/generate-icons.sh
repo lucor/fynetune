@@ -6,7 +6,8 @@ readonly REQUIRED_RESVG_VERSION="0.48.1"
 readonly ICON_SIZE=64
 readonly ICONS_ACTIVE="heart rotate-ccw-clock telescope settings palette"
 readonly ICONS_LINK="external-link"
-readonly ICONS="sun-moon circle-play repeat circle-power picture-in-picture info volume-2 volume power play"
+readonly ICONS="sun-moon circle-play repeat circle-power picture-in-picture info volume-2 volume power play ellipsis-vertical pencil trash plus"
+readonly ICONS_DANGER="trash"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
 
@@ -80,7 +81,7 @@ actual_oxipng_version="$("$oxipng_bin" --version | awk '{print $2}')"
 if [[ "$output_dir" != /* ]]; then
 	output_dir="$REPO_ROOT/$output_dir"
 fi
-mkdir -p "$output_dir/light" "$output_dir/dark" "$output_dir/active"
+mkdir -p "$output_dir/light" "$output_dir/dark" "$output_dir/active" "$output_dir/danger"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -157,6 +158,7 @@ color_for_variant() {
 	light) printf '#565656' ;;
 	dark) printf '#F3F3F3' ;;
 	active) printf '#0B8FF3' ;;
+	danger) printf '#E5484D' ;;
 	*) fail "unknown color variant: $1" ;;
 	esac
 }
@@ -177,7 +179,7 @@ generate_group() {
 	done
 }
 
-for variant in light dark active; do
+for variant in light dark active danger; do
 	find "$output_dir/$variant" -maxdepth 1 -type f -name '*.png' -delete
 done
 
@@ -189,6 +191,9 @@ for icon in $ICONS_LINK; do
 done
 for icon in $ICONS; do
 	generate_group "$icon" "light dark"
+done
+for icon in $ICONS_DANGER; do
+	generate_group "$icon" "danger"
 done
 
 license_url="https://raw.githubusercontent.com/lucide-icons/lucide/$lucide_version/LICENSE"
@@ -207,11 +212,12 @@ These PNGs are generated from official [Lucide Icons](https://github.com/lucide-
 - Light stroke: #565656.
 - Dark stroke: #F3F3F3.
 - Active stroke: #0B8FF3.
+- Danger stroke: #E5484D.
 Regenerate from the repository root with the mise run generate-icons task. To choose another Lucide release, pass --version TAG to internal/ui/assets/icons/generate-icons.sh.
 
 The Lucide license and copyright notices are preserved in [LICENSE](LICENSE).
 EOF
 
 printf 'Generated %s PNG icons using Lucide %s, resvg %s, and oxipng %s\n' \
-	"$(find "$output_dir/light" "$output_dir/dark" "$output_dir/active" -maxdepth 1 -type f -name '*.png' | wc -l | tr -d ' ')" \
+	"$(find "$output_dir/light" "$output_dir/dark" "$output_dir/active" "$output_dir/danger" -maxdepth 1 -type f -name '*.png' | wc -l | tr -d ' ')" \
 	"$lucide_version" "$actual_resvg_version" "$actual_oxipng_version"
