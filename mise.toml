@@ -89,16 +89,36 @@ android --no-metrics --sdk="$sdk_root" sdk install "build-tools;${ANDROID_BUILD_
 android --no-metrics --sdk="$sdk_root" sdk install "ndk;${ANDROID_NDK_VERSION}"
 """
 
+[tasks.android-dex]
+description = "Compile the Android playback service to dist/fynetune.dex"
+depends = ["android-setup"]
+run = """
+set -eu
+sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$(mise where android-sdk)}}"
+export ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
+android_jar="$sdk_root/platforms/${ANDROID_PLATFORM}/android.jar"
+mkdir -p dist/service-classes dist/service-dex
+javac -source 8 -target 8 -classpath "$android_jar" \
+  -d dist/service-classes internal/android/PlaybackService.java
+jar cf dist/PlaybackService.jar \
+  -C dist/service-classes dev/lucor/fynetune/android/PlaybackService.class
+"$sdk_root/build-tools/${ANDROID_BUILD_TOOLS}/d8" --lib "$android_jar" --min-api 21 \
+  --output dist/service-dex dist/PlaybackService.jar
+mv dist/service-dex/classes.dex dist/fynetune.dex
+"""
+
 [tasks.package-android]
 description = "Package a development APK to dist/FyneTune.apk"
-depends = ["android-setup"]
+depends = ["android-dex"]
 run = """
 set -eu
 sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$(mise where android-sdk)}}"
 export ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
 export ANDROID_NDK_HOME="$sdk_root/ndk/${ANDROID_NDK_VERSION}"
 mkdir -p dist
-go tool fyne package --os android --name FyneTune \\
-  --app-id dev.lucor.fynetune --icon Icon.png
+cp internal/android/icon-foreground.png Icon-foreground.png
+cp internal/android/icon-background.png Icon-background.png
+go tool fyne package --os android --name FyneTune \
+  --app-id dev.lucor.fynetune --icon Icon.png --android-dex dist/fynetune.dex
 mv FyneTune.apk dist/FyneTune.apk
 """

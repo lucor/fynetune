@@ -26,10 +26,13 @@ mise run check
 Go development tools are pinned in `go.mod` and invoked with `go tool`. Do not
 install workflow tools using unpinned `go install ...@latest` commands. Create
 a desktop package for the current operating system with `mise run package`.
-Build an Android development APK with `mise run package-android`. It installs
-the SDK components through `android-setup` and writes `dist/FyneTune.apk`. Run
-`mise install` first for the configured Java and Android SDK tools. See the
-README for SDK overrides and APK signing behavior.
+Build a development Android APK with `mise run package-android`. The dependent
+`mise run android-dex` task compiles the native playback Service to
+`dist/fynetune.dex`; Fyne Tools merges it into its embedded DEX while packaging
+`dist/FyneTune.apk`. This uses Fyne's debug packaging path and its current API-29
+target. Android release packaging uses Fyne's release path and API-36 target.
+Run `mise install` first for the configured Java and Android SDK tools. See the
+README for SDK overrides.
 
 Fyne and Oto require platform development libraries; see the README for the
 platform prerequisites. Keep public documentation, comments, and diagnostics in

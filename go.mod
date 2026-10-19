@@ -82,3 +82,5 @@ tool (
 	honnef.co/go/tools/cmd/staticcheck
 	lucor.dev/lian
 )
+
+replace fyne.io/tools => github.com/lucor/fyne-tools v0.0.0-20261020205748-6308eb213fe1 // Adds --android-dex to merge the Android playback service into the app.

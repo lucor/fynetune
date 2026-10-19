@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"go.lucor.dev/fynetune/internal/android"
 	"go.lucor.dev/fynetune/internal/audio/otooutput"
 	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/codec"
@@ -71,6 +72,8 @@ func main() {
 			slog.Warn("could not close playback session", "error", err)
 		}
 	}()
+	detachAndroidService := android.Attach(radioPlayer)
+	defer detachAndroidService()
 	window := ui.New(a, radioPlayer, radioBrowserClient)
 	window.Run()
 }
