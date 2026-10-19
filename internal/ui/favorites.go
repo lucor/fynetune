@@ -73,11 +73,11 @@ func favoritesEmptyState(w *Window) fyne.CanvasObject {
 	})
 	explore.Importance = widget.LowImportance
 	buttonSize := fyne.NewSize(220, 48)
-	return container.NewCenter(container.NewVBox(
+	return container.NewVScroll(container.NewCenter(container.NewVBox(
 		container.NewCenter(icon),
 		container.NewCenter(title),
 		container.NewCenter(detail),
 		container.NewGridWrap(buttonSize, add),
 		container.NewGridWrap(buttonSize, explore),
-	))
+	)))
 }

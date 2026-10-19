@@ -42,6 +42,66 @@ func TestOnboardingCanvasColorsFollowThemeChanges(t *testing.T) {
 	}
 }
 
+func TestWelcomeScreenFitsSmallMobileWindow(t *testing.T) {
+	window, onboarding := newOnboardingTestWindow(t)
+	window.Resize(fyne.NewSize(320, 520))
+	window.SetContent(onboarding.welcomeScreen())
+	if width := window.Canvas().Size().Width; width > 320 {
+		t.Fatalf("welcome screen widened the canvas to %.1f, want at most 320", width)
+	}
+
+	scroll := findOnboardingScroll(window.Content())
+	if scroll == nil {
+		t.Fatal("welcome screen should scroll on a small display")
+	}
+	if got, want := scroll.Content.Size().Width, scroll.Size().Width; got > want+1 {
+		t.Fatalf("welcome content width = %.1f, exceeds viewport width %.1f", got, want)
+	}
+	if got, want := scroll.Content.Size().Height, scroll.Size().Height; got <= want {
+		t.Fatalf("welcome content height = %.1f, want it to exceed the small viewport height %.1f", got, want)
+	}
+}
+
+func TestOnboardingConfirmationFitsSmallMobileWindow(t *testing.T) {
+	for _, state := range []string{"loading", "ready", "error"} {
+		t.Run(state, func(t *testing.T) {
+			app := test.NewTempApp(t)
+			app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
+			window := test.NewTempWindow(t, nil)
+			window.Resize(fyne.NewSize(320, 520))
+			w := &Window{app: app, window: window, store: storage.New(app)}
+			o := &onboarding{window: w, pendingCode: "US", selected: Country{Code: "US", Name: "United States"}}
+			w.onboarding = o
+			o.showCountryLoading()
+			t.Cleanup(o.loadActivity.Stop)
+			if state == "ready" {
+				o.finishCountrySetup(nil, nil)
+			} else if state == "error" {
+				o.finishCountrySetup(nil, errors.New("network unavailable"))
+			}
+			window.Show()
+			if width := window.Canvas().Size().Width; width > 320 {
+				t.Fatalf("confirmation screen widened the canvas to %.1f, want at most 320", width)
+			}
+			scroll := findOnboardingScroll(window.Content())
+			if scroll == nil {
+				t.Fatal("confirmation screen must allow scrolling on small displays")
+			}
+			if got, want := scroll.Content.Size().Width, scroll.Size().Width; got > want+1 {
+				t.Fatalf("confirmation content width = %.1f, exceeds viewport width %.1f", got, want)
+			}
+			if state != "loading" {
+				scroll.ScrollToBottom()
+				position := app.Driver().AbsolutePositionForObject(o.loadContinue)
+				viewport := app.Driver().AbsolutePositionForObject(scroll)
+				if position.Y < viewport.Y || position.Y+o.loadContinue.Size().Height > viewport.Y+scroll.Size().Height {
+					t.Fatal("confirmation action must be reachable within the viewport after scrolling")
+				}
+			}
+		})
+	}
+}
+
 func TestHomeSubtitleUsesThemedSecondaryText(t *testing.T) {
 	app := test.NewTempApp(t)
 	appTheme := &brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight}
@@ -259,9 +319,8 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	if o.loadContinueBox.Visible() {
 		t.Fatal("Continue should stay hidden while stations are loading")
 	}
-	countrySegment, ok := o.loadDescription.Segments[1].(*widget.TextSegment)
-	if !ok || !countrySegment.Style.TextStyle.Bold || countrySegment.Text != "Italy" {
-		t.Fatal("loading message should highlight the country name in bold")
+	if got, want := o.loadDescription.Text, "Loading the best radio stations\nfor Italy..."; got != want {
+		t.Fatalf("loading message = %q, want %q", got, want)
 	}
 
 	o.finishCountrySetup(nil, nil)
@@ -291,7 +350,7 @@ func TestOnboardingLoadingScreenUpdatesWhenStationsFinishLoading(t *testing.T) {
 	if !o.loadContinueBox.Visible() {
 		t.Fatal("Continue should appear after stations finish loading")
 	}
-	if got, want := o.loadDescription.String(), "Stations are ready for Italy."; got != want {
+	if got, want := o.loadDescription.Text, "Stations are ready for Italy."; got != want {
 		t.Fatalf("completion message = %q, want %q", got, want)
 	}
 	if got, want := o.loadSteps[1].label.Text, "Loaded stations for Italy"; got != want {
@@ -348,7 +407,7 @@ func newOnboardingTestWindow(t *testing.T) (fyne.Window, *onboarding) {
 	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
 	window := test.NewTempWindow(t, widget.NewLabel(""))
 	window.Resize(fyne.NewSize(480, 800))
-	w := &Window{window: window}
+	w := &Window{app: app, window: window}
 	o := &onboarding{window: w, suggestedCode: "US"}
 	w.onboarding = o
 	window.SetContent(o.welcomeScreen())
@@ -367,6 +426,22 @@ func findOnboardingButton(object fyne.CanvasObject, text string) *widget.Button 
 	for _, child := range parent.Objects {
 		if button := findOnboardingButton(child, text); button != nil {
 			return button
+		}
+	}
+	return nil
+}
+
+func findOnboardingScroll(object fyne.CanvasObject) *container.Scroll {
+	if scroll, ok := object.(*container.Scroll); ok {
+		return scroll
+	}
+	parent, ok := object.(*fyne.Container)
+	if !ok {
+		return nil
+	}
+	for _, child := range parent.Objects {
+		if scroll := findOnboardingScroll(child); scroll != nil {
+			return scroll
 		}
 	}
 	return nil

@@ -13,6 +13,35 @@ import (
 	"go.lucor.dev/fynetune/internal/storage"
 )
 
+func TestFavoritesEmptyActionsRemainReachableInShortViewport(t *testing.T) {
+	app := test.NewTempApp(t)
+	window := test.NewTempWindow(t, nil)
+	w := &Window{app: app, window: window}
+	window.SetContent(favoritesEmptyState(w))
+	window.Resize(fyne.NewSize(320, 160))
+	window.Show()
+	if height := window.Canvas().Size().Height; height > 160 {
+		t.Fatalf("empty Favorites requires %.1f units of height, want at most 160", height)
+	}
+
+	buttons := 0
+	for _, object := range test.LaidOutObjects(window.Content()) {
+		button, ok := object.(*widget.Button)
+		if !ok {
+			continue
+		}
+		buttons++
+		test.Scroll(window.Canvas(), fyne.NewPos(160, 80), 0, -1000)
+		position := app.Driver().AbsolutePositionForObject(button)
+		if position.Y < 0 || position.Y+button.Size().Height > window.Canvas().Size().Height {
+			t.Fatalf("%q is outside the viewport after scrolling: position=%v, size=%v", button.Text, position, button.Size())
+		}
+	}
+	if buttons != 2 {
+		t.Fatalf("empty Favorites has %d actions, want 2", buttons)
+	}
+}
+
 func TestFavoritesOffersCustomStationForm(t *testing.T) {
 	app := test.NewTempApp(t)
 	app.Settings().SetTheme(&brandTheme{Theme: theme.DefaultTheme(), appearance: appearanceLight})
@@ -33,19 +62,21 @@ func TestFavoritesOffersCustomStationForm(t *testing.T) {
 	if got := favorites.actions.MinSize().Height; got != 44 {
 		t.Fatalf("Favorites add action height = %v, want the 44-unit target used by station row actions", got)
 	}
-	renderer := test.WidgetRenderer(favorites.add)
-	background := renderer.Objects()[0].(*canvas.Rectangle)
-	beforeR, beforeG, beforeB, beforeA := background.FillColor.RGBA()
-	position := app.Driver().AbsolutePositionForObject(favorites.add).Add(fyne.NewPos(favorites.add.Size().Width/2, favorites.add.Size().Height/2))
-	test.MoveMouse(window.Canvas(), position)
-	afterR, afterG, afterB, afterA := background.FillColor.RGBA()
-	if beforeR == afterR && beforeG == afterG && beforeB == afterB && beforeA == afterA {
-		t.Fatal("hovering the Favorites add action should show button feedback")
-	}
-	test.MoveMouse(window.Canvas(), fyne.NewPos(-1, -1))
-	afterR, afterG, afterB, afterA = background.FillColor.RGBA()
-	if beforeR != afterR || beforeG != afterG || beforeB != afterB || beforeA != afterA {
-		t.Fatal("leaving the Favorites add action should clear its hover feedback")
+	if !app.Driver().Device().IsMobile() {
+		renderer := test.WidgetRenderer(favorites.add)
+		background := renderer.Objects()[0].(*canvas.Rectangle)
+		beforeR, beforeG, beforeB, beforeA := background.FillColor.RGBA()
+		position := app.Driver().AbsolutePositionForObject(favorites.add).Add(fyne.NewPos(favorites.add.Size().Width/2, favorites.add.Size().Height/2))
+		test.MoveMouse(window.Canvas(), position)
+		afterR, afterG, afterB, afterA := background.FillColor.RGBA()
+		if beforeR == afterR && beforeG == afterG && beforeB == afterB && beforeA == afterA {
+			t.Fatal("hovering the Favorites add action should show button feedback")
+		}
+		test.MoveMouse(window.Canvas(), fyne.NewPos(-1, -1))
+		afterR, afterG, afterB, afterA = background.FillColor.RGBA()
+		if beforeR != afterR || beforeG != afterG || beforeB != afterB || beforeA != afterA {
+			t.Fatal("leaving the Favorites add action should clear its hover feedback")
+		}
 	}
 	test.Tap(favorites.add)
 	if window.Content() == w.appContent || window.Canvas().Overlays().Top() != nil {

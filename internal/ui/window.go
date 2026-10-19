@@ -215,6 +215,7 @@ func (w *Window) refreshIconTheme() {
 		w.home.rows.refreshTheme()
 	}
 	if w.favorites != nil {
+		w.favorites.add.SetIcon(icons.Plus())
 		w.favorites.rows.refreshTheme()
 	}
 	if w.recentSection != nil {

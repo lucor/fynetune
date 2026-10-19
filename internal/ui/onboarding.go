@@ -47,7 +47,7 @@ type onboarding struct {
 	loadContent     *fyne.Container
 	loadContinue    *widget.Button
 	loadContinueBox *fyne.Container
-	loadDescription *widget.RichText
+	loadDescription *widget.Label
 	loadSteps       []*onboardingStep
 	loadError       *widget.Label
 	countryActivity *widget.Activity
@@ -125,6 +125,9 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 	o.choiceLabel.TextSize = theme.Size(theme.SizeNameSubHeadingText)
 	o.choiceLabel.TextStyle.Bold = true
 	flagIcon := o.suggestedFlag(o.suggestedCode)
+	areaLabel := widget.NewLabel("Most popular stations in your area")
+	areaLabel.Wrapping = fyne.TextWrapWord
+	areaLabel.Importance = widget.LowImportance
 	selection := container.NewBorder(
 		nil,
 		nil,
@@ -132,7 +135,7 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 		nil,
 		container.NewVBox(
 			o.choiceLabel,
-			o.mutedLabel("Most popular stations in your area"),
+			container.NewThemeOverride(areaLabel, compactTextTheme{Theme: o.window.app.Settings().Theme()}),
 		),
 	)
 	suggestedContent := container.NewPadded(container.NewVBox(
@@ -155,24 +158,24 @@ func (o *onboarding) welcomeScreen() fyne.CanvasObject {
 		description,
 	)
 	lower := container.NewVBox(
-		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 132), suggested)),
-		verticalSpace(24),
-		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 52), continueButton)),
+		suggested,
 		verticalSpace(16),
+		continueButton,
+		verticalSpace(12),
 		or,
+		verticalSpace(12),
+		o.chooseCountry,
 		verticalSpace(16),
-		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 50), o.chooseCountry)),
-		verticalSpace(24),
 		container.NewCenter(o.mutedLabel("You can change this later in Settings.")),
 	)
 	content := container.NewVBox(
-		verticalSpace(68),
+		verticalSpace(24),
 		top,
-		verticalSpace(68),
+		verticalSpace(24),
 		lower,
-		layout.NewSpacer(),
+		verticalSpace(24),
 	)
-	return container.NewPadded(content)
+	return container.NewPadded(container.NewVScroll(content))
 }
 
 // showCountryPicker displays the searchable list after country data is ready.
@@ -367,7 +370,10 @@ func (o *onboarding) startCountrySetup(code string) {
 func (o *onboarding) showCountryLoading() {
 	name := o.loadingCountryName()
 	o.loadActivity = widget.NewActivity()
-	o.loadDescription = loadingCountryMessage("Loading the best radio stations\nfor ", name, "...")
+	o.loadDescription = widget.NewLabel("Loading the best radio stations\nfor " + name + "...")
+	o.loadDescription.Alignment = fyne.TextAlignCenter
+	o.loadDescription.Wrapping = fyne.TextWrapWord
+	o.loadDescription.SizeName = theme.SizeNameSubHeadingText
 	o.loadError = widget.NewLabel("")
 	o.loadError.Alignment = fyne.TextAlignCenter
 	o.loadError.Wrapping = fyne.TextWrapWord
@@ -378,7 +384,7 @@ func (o *onboarding) showCountryLoading() {
 	o.loadSteps = []*onboardingStep{connectStep, fetchStep, prepareStep}
 	o.loadContinue = widget.NewButton("Continue", func() { o.window.showApp() })
 	o.loadContinue.Importance = widget.HighImportance
-	o.loadContinueBox = container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 52), o.loadContinue))
+	o.loadContinueBox = container.NewStack(o.loadContinue)
 	o.loadContinueBox.Hide()
 	o.loadActivityBox = container.NewCenter(container.NewGridWrap(fyne.NewSize(64, 64), o.loadActivity))
 	note := widget.NewLabel("This could take a few seconds.\nYou can always change country later in Settings.")
@@ -393,23 +399,24 @@ func (o *onboarding) showCountryLoading() {
 	noteBackground.CornerRadius = theme.Size(theme.SizeNameCardRadius)
 	noteBox := container.NewStack(noteBackground, noteContent)
 	o.loadContent = container.NewVBox(
-		verticalSpace(80),
-		container.NewCenter(o.logo()),
 		verticalSpace(24),
+		o.logo(),
+		verticalSpace(16),
 		container.NewCenter(o.onboardingHeading("Almost ready")),
 		verticalSpace(8),
-		container.NewCenter(container.NewGridWrap(fyne.NewSize(400, 56), o.loadDescription)),
-		verticalSpace(24),
+		o.loadDescription,
+		verticalSpace(16),
 		o.loadActivityBox,
-		verticalSpace(20),
-		container.NewCenter(container.NewVBox(connectRow, fetchRow, prepareRow)),
-		container.NewCenter(o.loadError),
-		verticalSpace(24),
+		verticalSpace(16),
+		container.NewVBox(connectRow, fetchRow, prepareRow),
+		o.loadError,
+		verticalSpace(16),
 		o.loadContinueBox,
-		verticalSpace(48),
+		verticalSpace(24),
 		noteBox,
+		verticalSpace(24),
 	)
-	o.window.setContent(container.NewCenter(container.NewPadded(o.loadContent)))
+	o.window.setContent(container.NewPadded(container.NewVScroll(o.loadContent)))
 	o.loadActivity.Start()
 }
 
@@ -476,8 +483,7 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 			o.loadError.Show()
 		}
 		if o.loadDescription != nil {
-			o.loadDescription.Segments = loadingCountryMessage("Could not complete setup for ", o.loadingCountryName(), ".").Segments
-			o.loadDescription.Refresh()
+			o.loadDescription.SetText("Could not complete setup for " + o.loadingCountryName() + ".")
 		}
 		if o.loadContinue != nil {
 			o.loadContinue.SetText("Retry")
@@ -491,8 +497,7 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 			}
 		}
 		if o.loadDescription != nil {
-			o.loadDescription.Segments = loadingCountryMessage("Stations are ready for ", o.loadingCountryName(), ".").Segments
-			o.loadDescription.Refresh()
+			o.loadDescription.SetText("Stations are ready for " + o.loadingCountryName() + ".")
 		}
 	}
 	if o.loadContinueBox != nil {
@@ -552,23 +557,8 @@ func verticalSpace(height float32) fyne.CanvasObject {
 func newOnboardingStep(icon fyne.Resource, text string, colorName fyne.ThemeColorName) (*onboardingStep, fyne.CanvasObject) {
 	statusIcon := widget.NewIcon(theme.NewColoredResource(icon, colorName))
 	label := widget.NewLabel(text)
-	return &onboardingStep{icon: statusIcon, label: label}, container.NewHBox(statusIcon, label)
-}
-
-// loadingCountryMessage builds a centered message with the country name in bold.
-func loadingCountryMessage(before, country, after string) *widget.RichText {
-	regular := widget.RichTextStyleInline
-	regular.Alignment = fyne.TextAlignCenter
-	regular.SizeName = theme.SizeNameSubHeadingText
-	strong := regular
-	strong.TextStyle.Bold = true
-	message := widget.NewRichText(
-		&widget.TextSegment{Style: regular, Text: before},
-		&widget.TextSegment{Style: strong, Text: country},
-		&widget.TextSegment{Style: regular, Text: after},
-	)
-	message.Wrapping = fyne.TextWrapWord
-	return message
+	label.Wrapping = fyne.TextWrapWord
+	return &onboardingStep{icon: statusIcon, label: label}, container.NewBorder(nil, nil, statusIcon, nil, label)
 }
 
 // loadingCountryName returns the selected country or a generic regional label.
