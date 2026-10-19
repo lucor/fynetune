@@ -39,7 +39,9 @@ type Window struct {
 	settingsVersionBadge *widgets.Badge
 	themeIcons           []themeIcon
 	bottomNavigation     *navigation.Navigation
-	radioPlayer          radio.Player
+	radioPlayer          playbackSession
+	playerEvents         <-chan radio.Event
+	unsubscribePlayback  func()
 	store                *storage.Store
 	settings             storage.Settings
 	directory            radiobrowser.Directory
@@ -60,7 +62,15 @@ type Window struct {
 	done                 chan struct{}
 	eventsDone           chan struct{}
 	closeOnce            sync.Once
-	closeErr             error
+}
+
+type playbackSession interface {
+	Play(radio.Station)
+	Stop()
+	SetVolume(float64)
+	SetReconnect(bool)
+	State() radio.PlayerState
+	Subscribe() (<-chan radio.Event, func())
 }
 
 type themeIcon struct {
@@ -69,7 +79,7 @@ type themeIcon struct {
 }
 
 // New creates the window and displays onboarding when no discovery country is saved.
-func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory) *Window {
+func New(a fyne.App, radioPlayer playbackSession, directory radiobrowser.Directory) *Window {
 	systemTheme := a.Settings().Theme()
 	store := storage.New(a)
 	settings, err := store.Load()
@@ -91,18 +101,21 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 		slog.Warn("could not load recent stations", "error", err)
 		recent = nil
 	}
+	playerEvents, unsubscribePlayback := radioPlayer.Subscribe()
 	w := &Window{
-		app:              a,
-		window:           window,
-		theme:            appTheme,
-		radioPlayer:      radioPlayer,
-		store:            store,
-		settings:         settings,
-		volumeBeforeMute: settings.Volume,
-		recent:           recent,
-		directory:        directory,
-		done:             make(chan struct{}),
-		eventsDone:       make(chan struct{}),
+		app:                 a,
+		window:              window,
+		theme:               appTheme,
+		radioPlayer:         radioPlayer,
+		playerEvents:        playerEvents,
+		unsubscribePlayback: unsubscribePlayback,
+		store:               store,
+		settings:            settings,
+		volumeBeforeMute:    settings.Volume,
+		recent:              recent,
+		directory:           directory,
+		done:                make(chan struct{}),
+		eventsDone:          make(chan struct{}),
 	}
 	radioPlayer.SetVolume(settings.Volume)
 	radioPlayer.SetReconnect(settings.Reconnect)
@@ -130,7 +143,7 @@ func New(a fyne.App, radioPlayer radio.Player, directory radiobrowser.Directory)
 	})
 	if desktopApp, ok := a.(desktop.App); ok {
 		w.tray = newSystemTray(desktopApp, window, homeBrandIcon, w.togglePlayback, func() {
-			_ = w.Close()
+			w.Close()
 			a.Quit()
 		})
 		window.SetCloseIntercept(func() { window.Hide() })
@@ -266,17 +279,18 @@ func (w *Window) Run() {
 	} else {
 		w.window.ShowAndRun()
 	}
-	_ = w.Close()
+	w.Close()
 }
 
-// Close stops playback and waits for the player event listener to exit.
-func (w *Window) Close() error {
+// Close detaches the UI from playback and waits for its event listener to exit.
+func (w *Window) Close() {
 	w.closeOnce.Do(func() {
 		close(w.done)
-		w.closeErr = w.radioPlayer.Close()
+		if w.unsubscribePlayback != nil {
+			w.unsubscribePlayback()
+		}
 		<-w.eventsDone
 	})
-	return w.closeErr
 }
 
 // showApp returns to the app view after onboarding completes.
@@ -410,7 +424,7 @@ func (w *Window) events() {
 		select {
 		case <-w.done:
 			return
-		case event, ok := <-w.radioPlayer.Events():
+		case event, ok := <-w.playerEvents:
 			if !ok {
 				return
 			}

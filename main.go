@@ -13,6 +13,7 @@ import (
 	"go.lucor.dev/fynetune/internal/audio/otooutput"
 	"go.lucor.dev/fynetune/internal/cache"
 	"go.lucor.dev/fynetune/internal/codec"
+	"go.lucor.dev/fynetune/internal/playback"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
@@ -62,7 +63,14 @@ func main() {
 	radioBrowserHTTPClient := &http.Client{Timeout: radioBrowserHTTPTimeout}
 	radioBrowserClient := radiobrowser.New(radioBrowserHTTPClient)
 	streamHTTPClient := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: streamHeaderTimeout}}
-	radioPlayer := radio.NewPlayer(httpstream.New(streamHTTPClient), codec.New(), otooutput.New())
+	radioPlayer := playback.NewSession(
+		radio.NewPlayer(httpstream.New(streamHTTPClient), codec.New(), otooutput.New()),
+	)
+	defer func() {
+		if err := radioPlayer.Close(); err != nil {
+			slog.Warn("could not close playback session", "error", err)
+		}
+	}()
 	window := ui.New(a, radioPlayer, radioBrowserClient)
 	window.Run()
 }

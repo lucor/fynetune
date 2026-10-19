@@ -46,7 +46,7 @@ func TestTrayPlaybackAfterRestart(t *testing.T) {
 			player := &trayTestPlayer{events: make(chan radio.Event)}
 			window := New(app, player, nil)
 			waitStartup(t, driver.completed)
-			t.Cleanup(func() { _ = window.Close() })
+			t.Cleanup(window.Close)
 			if app.menu == nil || app.icon == nil || app.trayWindowSet {
 				t.Fatal("tray menu and icon must be registered without assigning a tray window")
 			}
@@ -80,6 +80,33 @@ func TestTrayPlaybackAfterRestart(t *testing.T) {
 	}
 }
 
+func TestWindowCloseDetachesWithoutClosingPlayback(t *testing.T) {
+	base := test.NewTempApp(t)
+	driver := &startupTestDriver{Driver: base.Driver(), completed: make(chan func(), 1)}
+	runtime := &startupTestApp{App: base, driver: driver}
+	fyne.SetCurrentApp(runtime)
+	t.Cleanup(func() { fyne.SetCurrentApp(base) })
+	app := &trayTestApp{App: runtime}
+	player := &trayTestPlayer{events: make(chan radio.Event)}
+	store := storage.New(app)
+	if err := store.SaveSettings(storage.Settings{DiscoveryCountry: "@IT", Volume: 0.75}); err != nil {
+		t.Fatal(err)
+	}
+
+	window := New(app, player, nil)
+	waitStartup(t, driver.completed)
+	t.Cleanup(window.Close)
+	window.Close()
+	window.Close()
+
+	if player.unsubscribeCalls != 1 {
+		t.Fatalf("playback observer detach calls = %d, want 1", player.unsubscribeCalls)
+	}
+	if player.closeCalls != 0 {
+		t.Fatalf("player Close() calls = %d, want 0 while UI detaches", player.closeCalls)
+	}
+}
+
 // trayTestApp records desktop tray registration while using Fyne's headless app.
 type trayTestApp struct {
 	fyne.App
@@ -101,9 +128,11 @@ func (a *trayTestApp) SetSystemTrayWindow(fyne.Window) { a.trayWindowSet = true 
 
 // trayTestPlayer records playback commands without opening streams or audio devices.
 type trayTestPlayer struct {
-	events chan radio.Event
-	state  radio.PlayerState
-	played radio.Station
+	events           chan radio.Event
+	state            radio.PlayerState
+	played           radio.Station
+	unsubscribeCalls int
+	closeCalls       int
 }
 
 func (p *trayTestPlayer) Play(station radio.Station) {
@@ -115,4 +144,7 @@ func (p *trayTestPlayer) SetVolume(float64)          {}
 func (p *trayTestPlayer) SetReconnect(bool)          {}
 func (p *trayTestPlayer) State() radio.PlayerState   { return p.state }
 func (p *trayTestPlayer) Events() <-chan radio.Event { return p.events }
-func (p *trayTestPlayer) Close() error               { return nil }
+func (p *trayTestPlayer) Subscribe() (<-chan radio.Event, func()) {
+	return p.events, func() { p.unsubscribeCalls++ }
+}
+func (p *trayTestPlayer) Close() error { p.closeCalls++; return nil }
