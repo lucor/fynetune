@@ -1,5 +1,5 @@
 [tools]
-go = "1.27.2"
+go = "1.27.3"
 java = "21"
 android-sdk = "23.0"
 # CLI tools used to render and optimize the generated Lucide PNG icons.
