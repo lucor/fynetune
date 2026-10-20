@@ -147,6 +147,22 @@ func waitStartup(t *testing.T, completed <-chan func()) {
 	}
 }
 
+// waitStartupUntil runs queued UI callbacks until the requested startup state
+// is reached, ignoring unrelated callbacks queued by other background work.
+func waitStartupUntil(t *testing.T, completed <-chan func(), done func() bool) {
+	t.Helper()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for !done() {
+		select {
+		case fn := <-completed:
+			fn()
+		case <-timer.C:
+			t.Fatal("startup did not reach the expected state")
+		}
+	}
+}
+
 type startupTestApp struct {
 	fyne.App
 	driver *startupTestDriver

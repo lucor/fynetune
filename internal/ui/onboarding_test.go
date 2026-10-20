@@ -209,7 +209,7 @@ func TestSettingsCountryChange(t *testing.T) {
 			}
 			o.startCountrySetup(tc.selectedCode) // The modal also prevents a second loading action.
 			close(gate)
-			waitStartup(t, driver.completed)
+			waitStartupUntil(t, driver.completed, func() bool { return o.loadingDialog == nil })
 			if directory.calls.Load() != 1 {
 				t.Fatal("country change must fetch once")
 			}
