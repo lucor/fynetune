@@ -1,2 +1,27 @@
+Website = "https://fynetune.lucor.dev"
+Description = "A simple internet radio player"
+
+[Details]
+Icon = "Icon.png"
+Name = "FyneTune"
+ID = "dev.lucor.fynetune"
+Version = "0.16.0"
+
+[Migrations]
+fyneDo = true
+
+[AdaptiveIcon]
+Foreground = "internal/android/icon-foreground.png"
+Background = "internal/android/icon-background.png"
+
 [Splash]
 Background = "#FFFFFF"
+
+[Source]
+Repo = "https://github.com/lucor/fynetune"
+
+[LinuxAndBSD]
+GenericName = "Internet Radio Player"
+Categories = ["AudioVideo", "Audio", "Player"]
+Comment = "Browse stations, save your favorites, and listen"
+Keywords = ["radio", "music", "streaming"]
