@@ -15,6 +15,8 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/favicon"
+	"go.lucor.dev/fynetune/internal/playback"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/radiobrowser"
 	"go.lucor.dev/fynetune/internal/storage"
@@ -40,7 +42,7 @@ type Window struct {
 	themeIcons           []themeIcon
 	bottomNavigation     *navigation.Navigation
 	radioPlayer          playbackSession
-	playerEvents         <-chan radio.Event
+	playerEvents         <-chan playback.Event
 	unsubscribePlayback  func()
 	store                *storage.Store
 	settings             storage.Settings
@@ -70,7 +72,8 @@ type playbackSession interface {
 	SetVolume(float64)
 	SetReconnect(bool)
 	State() radio.PlayerState
-	Subscribe() (<-chan radio.Event, func())
+	Subscribe() (<-chan playback.Event, func())
+	SetArtwork(radio.Station, favicon.Icon)
 }
 
 type themeIcon struct {
@@ -430,9 +433,22 @@ func (w *Window) events() {
 				return
 			}
 			current := event
-			fyne.Do(func() { w.updatePlayer(current) })
+			fyne.Do(func() { w.updatePlayback(current) })
 		}
 	}
+}
+
+// updatePlayback displays the same immutable artwork snapshot as native controls.
+func (w *Window) updatePlayback(event playback.Event) {
+	w.updatePlayer(event.Event)
+	if w.playerBar == nil || event.Station.ID == "" || event.Station.ID != w.selectedStation.ID {
+		return
+	}
+	icon := favicon.Icon{SVG: homeBrandIcon.Content(), Format: "svg"}
+	if event.Artwork != nil {
+		icon = *event.Artwork
+	}
+	applyStationIcon(w.playerBar.artwork, icon)
 }
 
 // updatePlayer applies one player event when it belongs to the selected station.
@@ -441,32 +457,13 @@ func (w *Window) updatePlayer(event radio.Event) {
 		return
 	}
 	station := w.selectedStation
-	status := "Not playing"
+	status := playback.Description(event)
 	playing := false
 	switch event.State {
-	case radio.StateConnecting:
-		station = event.Station
-		status, playing = "Connecting…", true
-	case radio.StateBuffering:
-		station = event.Station
-		status, playing = "Buffering…", true
-	case radio.StatePlaying:
-		station = event.Station
-		status = event.Metadata.String()
-		if status == "" {
-			status = "Now playing"
-		}
-		playing = true
-	case radio.StateReconnecting:
-		station = event.Station
-		status, playing = "Connection interrupted · retrying", true
+	case radio.StateConnecting, radio.StateBuffering, radio.StatePlaying, radio.StateReconnecting:
+		station, playing = event.Station, true
 	case radio.StateError:
 		station = event.Station
-		if event.Err != nil {
-			status = event.Err.Error()
-		} else {
-			status = "Playback failed"
-		}
 	case radio.StateStopped:
 		if w.radioPlayer.State() != radio.StateStopped {
 			return

@@ -510,7 +510,7 @@ func (o *onboarding) finishCountrySetup(stations []radio.Station, err error) {
 
 // logo returns the FyneTune icon used across onboarding screens.
 func (o *onboarding) logo() fyne.CanvasObject {
-	icon := canvas.NewImageFromResource(fyne.NewStaticResource("FyneTune-icon.svg", iconSVG))
+	icon := canvas.NewImageFromResource(homeBrandIcon)
 	icon.FillMode = canvas.ImageFillContain
 	return container.NewCenter(container.NewGridWrap(fyne.NewSize(64, 64), icon))
 }

@@ -5,6 +5,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+	"go.lucor.dev/fynetune/internal/favicon"
+	"go.lucor.dev/fynetune/internal/playback"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/storage"
 )
@@ -43,7 +45,7 @@ func TestTrayPlaybackAfterRestart(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			player := &trayTestPlayer{events: make(chan radio.Event)}
+			player := &trayTestPlayer{events: make(chan playback.Event)}
 			window := New(app, player, nil)
 			waitStartup(t, driver.completed)
 			t.Cleanup(window.Close)
@@ -87,7 +89,7 @@ func TestWindowCloseDetachesWithoutClosingPlayback(t *testing.T) {
 	fyne.SetCurrentApp(runtime)
 	t.Cleanup(func() { fyne.SetCurrentApp(base) })
 	app := &trayTestApp{App: runtime}
-	player := &trayTestPlayer{events: make(chan radio.Event)}
+	player := &trayTestPlayer{events: make(chan playback.Event)}
 	store := storage.New(app)
 	if err := store.SaveSettings(storage.Settings{DiscoveryCountry: "@IT", Volume: 0.75}); err != nil {
 		t.Fatal(err)
@@ -128,7 +130,7 @@ func (a *trayTestApp) SetSystemTrayWindow(fyne.Window) { a.trayWindowSet = true 
 
 // trayTestPlayer records playback commands without opening streams or audio devices.
 type trayTestPlayer struct {
-	events           chan radio.Event
+	events           chan playback.Event
 	state            radio.PlayerState
 	played           radio.Station
 	unsubscribeCalls int
@@ -139,12 +141,14 @@ func (p *trayTestPlayer) Play(station radio.Station) {
 	p.played = station
 	p.state = radio.StateConnecting
 }
-func (p *trayTestPlayer) Stop()                      { p.state = radio.StateStopped }
-func (p *trayTestPlayer) SetVolume(float64)          {}
-func (p *trayTestPlayer) SetReconnect(bool)          {}
-func (p *trayTestPlayer) State() radio.PlayerState   { return p.state }
-func (p *trayTestPlayer) Events() <-chan radio.Event { return p.events }
-func (p *trayTestPlayer) Subscribe() (<-chan radio.Event, func()) {
+func (p *trayTestPlayer) Stop()                    { p.state = radio.StateStopped }
+func (p *trayTestPlayer) SetVolume(float64)        {}
+func (p *trayTestPlayer) SetReconnect(bool)        {}
+func (p *trayTestPlayer) State() radio.PlayerState { return p.state }
+
+func (p *trayTestPlayer) Subscribe() (<-chan playback.Event, func()) {
 	return p.events, func() { p.unsubscribeCalls++ }
 }
 func (p *trayTestPlayer) Close() error { p.closeCalls++; return nil }
+
+func (p *trayTestPlayer) SetArtwork(radio.Station, favicon.Icon) {}

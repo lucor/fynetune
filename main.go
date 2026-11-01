@@ -2,7 +2,6 @@
 package main
 
 import (
-	_ "embed"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"go.lucor.dev/fynetune/internal/storage"
 	"go.lucor.dev/fynetune/internal/transport/httpstream"
 	"go.lucor.dev/fynetune/internal/ui"
+	"go.lucor.dev/fynetune/internal/ui/assets"
 	"go.lucor.dev/fynetune/internal/version"
 )
 
@@ -31,9 +31,6 @@ const (
 	radioBrowserHTTPTimeout = 15 * time.Second
 	streamHeaderTimeout     = 15 * time.Second
 )
-
-//go:embed internal/ui/assets/icon.svg
-var appIconSVG []byte
 
 func main() {
 	debug := os.Getenv("FYNETUNE_DEBUG") == "1"
@@ -52,7 +49,7 @@ func main() {
 	metadata := a.Metadata()
 	metadata.ID = currentAppID
 	metadata.Name = appName
-	metadata.Icon = fyne.NewStaticResource(appIconName, appIconSVG)
+	metadata.Icon = fyne.NewStaticResource(appIconName, assets.IconSVG)
 	if metadata.Build < 1 {
 		metadata.Build = 1
 	}

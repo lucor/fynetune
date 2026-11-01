@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/playback"
 	"go.lucor.dev/fynetune/internal/radio"
 	"go.lucor.dev/fynetune/internal/storage"
 )
@@ -168,7 +169,7 @@ func TestDeletingCustomStationCleansRecentAndPlaybackSelection(t *testing.T) {
 	if err := store.SaveRecent(recent); err != nil {
 		t.Fatal(err)
 	}
-	player := &trayTestPlayer{events: make(chan radio.Event), state: radio.StatePlaying}
+	player := &trayTestPlayer{events: make(chan playback.Event), state: radio.StatePlaying}
 	w := &Window{
 		app: app, window: window, store: store, settings: settings,
 		recent: recent, selectedStation: station, radioPlayer: player,

@@ -7,17 +7,15 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"go.lucor.dev/fynetune/internal/ui/assets"
 	"go.lucor.dev/fynetune/internal/ui/assets/icons"
 	"go.lucor.dev/fynetune/internal/ui/navigation"
 )
 
-//go:embed assets/icon.svg
-var iconSVG []byte
-
 //go:embed assets/wordmark.svg
 var wordmarkSVG []byte
 
-var homeBrandIcon = fyne.NewStaticResource("FyneTune-icon.svg", iconSVG)
+var homeBrandIcon = fyne.NewStaticResource("FyneTune-icon.svg", assets.IconSVG)
 
 // newApp builds the app view with its section header and bottom navigation.
 func newApp(w *Window) fyne.CanvasObject {

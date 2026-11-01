@@ -320,6 +320,7 @@ func (s *stationList) fetchStationArtwork(row *stationListRow, station radio.Sta
 		}
 		if stationIconKey(s.window.selectedStation) == key && s.window.playerBar != nil {
 			applyStationIcon(s.window.playerBar.artwork, icon)
+			s.window.radioPlayer.SetArtwork(s.window.selectedStation, icon)
 		}
 	})
 }
@@ -335,6 +336,7 @@ func (s *stationList) fetchPlayerArtwork(station radio.Station, key string) {
 	fyne.Do(func() {
 		if stationIconKey(s.window.selectedStation) == key && s.window.playerBar != nil {
 			applyStationIcon(s.window.playerBar.artwork, icon)
+			s.window.radioPlayer.SetArtwork(s.window.selectedStation, icon)
 		}
 	})
 }

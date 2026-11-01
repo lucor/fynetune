@@ -1,12 +1,69 @@
 package playback
 
 import (
+	"image"
 	"sync"
 	"testing"
 	"time"
 
+	"go.lucor.dev/fynetune/internal/favicon"
+	"go.lucor.dev/fynetune/internal/metadata"
 	"go.lucor.dev/fynetune/internal/radio"
 )
+
+func TestSessionSharesArtworkWithoutLosingPlaybackMetadata(t *testing.T) {
+	player := newTestPlayer(radio.StateStopped)
+	session := NewSession(player)
+	defer session.Close()
+	events, unsubscribe := session.Subscribe()
+	defer unsubscribe()
+	receiveEvent(t, events)
+	station := radio.Station{ID: "first", Favicon: "first.png"}
+	// The saved station's artwork may load while the player is still idle.
+	icon := favicon.Icon{Raster: image.NewNRGBA(image.Rect(0, 0, 16, 16))}
+	session.SetArtwork(station, icon)
+	session.Play(station)
+	player.events <- radio.Event{State: radio.StatePlaying, Station: station, Metadata: metadata.Track{Title: "Song"}}
+	first := receiveEvent(t, events)
+	if first.Artwork == nil || first.Artwork.Raster != icon.Raster || first.Metadata.Title != "Song" {
+		t.Fatalf("incomplete playback snapshot: %+v", first)
+	}
+	// Track updates retain the same immutable artwork.
+	player.events <- radio.Event{State: radio.StatePlaying, Station: station, Metadata: metadata.Track{Title: "Next"}}
+	next := receiveEvent(t, events)
+	if next.Artwork != first.Artwork || next.Metadata.Title != "Next" {
+		t.Fatal("track update lost artwork")
+	}
+	late, cancelLate := session.Subscribe()
+	defer cancelLate()
+	if got := receiveEvent(t, late); got.Artwork != first.Artwork || got.Metadata.Title != "Next" {
+		t.Fatal("new observer did not receive current artwork and track")
+	}
+	// A changed icon source for the same station invalidates pending results.
+	updated := station
+	updated.Favicon = "new.png"
+	session.Play(updated)
+	session.SetArtwork(station, icon)
+	player.events <- radio.Event{State: radio.StatePlaying, Station: updated}
+	if got := receiveEvent(t, events); got.Artwork != nil {
+		t.Fatal("old icon source survived station change")
+	}
+	session.SetArtwork(updated, icon)
+	if got := receiveEvent(t, events); got.Artwork == nil {
+		t.Fatal("current artwork was not published")
+	}
+	other := radio.Station{ID: "other"}
+	session.Play(other)
+	session.SetArtwork(updated, icon)
+	player.events <- radio.Event{State: radio.StatePlaying, Station: other}
+	if got := receiveEvent(t, events); got.Artwork != nil {
+		t.Fatal("late artwork leaked into another station")
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	session.SetArtwork(other, icon) // Closed observers must never receive another send.
+}
 
 func TestSessionSubscriptionsReceiveIndependentEvents(t *testing.T) {
 	player := newTestPlayer(radio.StateConnecting)
@@ -109,7 +166,7 @@ func TestSessionCloseIsIdempotentAndClosesSubscribers(t *testing.T) {
 	}
 }
 
-func receiveEvent(t *testing.T, events <-chan radio.Event) radio.Event {
+func receiveEvent(t *testing.T, events <-chan Event) Event {
 	t.Helper()
 	select {
 	case event, ok := <-events:
@@ -119,7 +176,7 @@ func receiveEvent(t *testing.T, events <-chan radio.Event) radio.Event {
 		return event
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for playback event")
-		return radio.Event{}
+		return Event{}
 	}
 }
 
